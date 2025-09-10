@@ -67,6 +67,7 @@ import com.l2jfree.gameserver.datatables.PetDataTable;
 import com.l2jfree.gameserver.datatables.RecipeTable;
 import com.l2jfree.gameserver.datatables.RecordTable;
 import com.l2jfree.gameserver.datatables.SkillTable;
+import com.l2jfree.gameserver.datatables.SkillTable.SkillInfo;
 import com.l2jfree.gameserver.datatables.SkillTreeTable;
 import com.l2jfree.gameserver.gameobjects.ai.CtrlIntention;
 import com.l2jfree.gameserver.gameobjects.ai.L2CreatureAI;
@@ -120,6 +121,7 @@ import com.l2jfree.gameserver.handler.SkillHandler;
 import com.l2jfree.gameserver.handler.admincommands.AdminEditChar;
 import com.l2jfree.gameserver.handler.skills.TakeCastle;
 import com.l2jfree.gameserver.handler.skills.TakeFort;
+import com.l2jfree.gameserver.idfactory.IdFactory;
 import com.l2jfree.gameserver.instancemanager.CastleManager;
 import com.l2jfree.gameserver.instancemanager.CursedWeaponsManager;
 import com.l2jfree.gameserver.instancemanager.DimensionalRiftManager;
@@ -181,6 +183,7 @@ import com.l2jfree.gameserver.model.items.manufacture.L2ManufactureList;
 import com.l2jfree.gameserver.model.items.recipe.L2RecipeList;
 import com.l2jfree.gameserver.model.items.templates.L2Armor;
 import com.l2jfree.gameserver.model.items.templates.L2ArmorType;
+import com.l2jfree.gameserver.model.items.templates.L2EtcItem;
 import com.l2jfree.gameserver.model.items.templates.L2EtcItemType;
 import com.l2jfree.gameserver.model.items.templates.L2Henna;
 import com.l2jfree.gameserver.model.items.templates.L2Item;
@@ -209,6 +212,8 @@ import com.l2jfree.gameserver.model.skills.conditions.ConditionGameTime;
 import com.l2jfree.gameserver.model.skills.conditions.ConditionPlayerHp;
 import com.l2jfree.gameserver.model.skills.effects.L2Effect;
 import com.l2jfree.gameserver.model.skills.funcs.Func;
+import com.l2jfree.gameserver.model.skills.funcs.FuncAdd;
+import com.l2jfree.gameserver.model.skills.funcs.FuncOwner;
 import com.l2jfree.gameserver.model.skills.l2skills.L2SkillSummon;
 import com.l2jfree.gameserver.model.skills.learn.L2CertificationSkillsLearn;
 import com.l2jfree.gameserver.model.skills.learn.L2SkillLearn;
@@ -401,7 +406,8 @@ public final class L2Player extends L2Playable
 	private static final String RESTORE_COLORS =
 			"SELECT name_color, title_color FROM character_name_title_colors WHERE char_id=?";
 	private static final String UPDATE_COLORS = "REPLACE INTO character_name_title_colors VALUES(?,?,?)";
-	
+
+
 	public static final int REQUEST_TIMEOUT = 15;
 	
 	public static final int STORE_PRIVATE_NONE = 0;
@@ -409,7 +415,97 @@ public final class L2Player extends L2Playable
 	public static final int STORE_PRIVATE_BUY = 3;
 	public static final int STORE_PRIVATE_MANUFACTURE = 5;
 	public static final int STORE_PRIVATE_PACKAGE_SELL = 8;
-	
+	private volatile boolean _expDisabled = false;
+	// --- Auto Herb Pickup toggle start ---
+	private boolean _autoHerbPickupEnabled = Config.ALT_AUTO_LOOT_HERBS;
+	public boolean isAutoHerbPickupEnabled() { return _autoHerbPickupEnabled; }
+	public void setAutoHerbPickupEnabled(boolean enabled) { _autoHerbPickupEnabled = enabled; }
+	// --- Auto Herb Pickup toggle end ---
+	public boolean isExpDisabled() { return _expDisabled; }
+	public void setExpDisabled(boolean value) { _expDisabled = value; }
+	public void disableExpGain() { _expDisabled = true; }
+	public void enableExpGain() { _expDisabled = false; }
+private static final FuncOwner PEACE_SPEED_OWNER = new FuncOwner() {
+    @Override
+    public String getFuncOwnerName() { return "PEACE_SPEED"; }
+    @Override
+    public L2Skill getFuncOwnerSkill() { return null; }
+};
+
+public void applyPeaceSpeedBonus(int bonus)
+{
+    removeStatsOwner(PEACE_SPEED_OWNER);
+    addStatFunc(new FuncAdd(Stats.RUN_SPEED, 0x40, PEACE_SPEED_OWNER, bonus, null));
+    broadcastUserInfo();
+}
+
+public void removePeaceSpeedBonus()
+{
+    removeStatsOwner(PEACE_SPEED_OWNER);
+    broadcastUserInfo();
+}
+
+private boolean tryConsumeHerb(int itemId, long count)
+{
+	final L2Item t = ItemTable.getInstance().getTemplate(itemId);
+	if (!(t instanceof L2EtcItem))
+	{
+		return false;
+	}
+	final L2EtcItem etc = (L2EtcItem)t;
+	if (etc.getItemType() != L2EtcItemType.HERB)
+	{
+		return false;
+	}
+
+	for (long i = 0; i < count; i++)
+	{
+		try
+		{
+			// нужен НЕ-null L2ItemInstance, иначе NPE в ItemSkills.useItem(...)
+			final L2ItemInstance fake = new L2ItemInstance(IdFactory.getInstance().getNextId(), itemId);
+			fake.setOwnerId(getObjectId());
+			fake.setCount(1);
+			// если есть enum локаций — лучше VOID/NOT_EQUIPPED, чтобы не лезть в инвентарь
+			// fake.setLocation(L2ItemInstance.ItemLocation.VOID);
+
+			ItemHandler.getInstance().useItem(itemId, this, fake); // как в doPickupItem
+		}
+		catch (Throwable e)
+		{
+			// фолбэк: прямое наложение эффектов, если хендлер не сработал
+			final SkillInfo[] infos = etc.getSkillInfos();
+			if (infos != null)
+			{
+				for (SkillInfo si : infos)
+				{
+					if (si != null)
+					{
+						final L2Skill s = si.getSkill();
+						if (s != null)
+						{
+							s.getEffects(this, this);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// как при ручном пикапе
+	/*SystemMessage smsg = (count > 1)
+		? new SystemMessage(SystemMessageId.YOU_PICKED_UP_S1_S2)
+		: new SystemMessage(SystemMessageId.YOU_PICKED_UP_S1);
+	smsg.addItemName(itemId);
+	if (count > 1) { smsg.addItemNumber(count); }
+	sendPacket(smsg);*/
+
+	return true; // потребили — не кладём в инвентарь
+}
+
+
+
+
 	/** The table containing all minimum level needed for each Expertise (None, D, C, B, A, S, S80, S84)*/
 	private static final int[] EXPERTISE_LEVELS = { SkillTreeTable.getInstance().getExpertiseLevel(0), // NONE
 			SkillTreeTable.getInstance().getExpertiseLevel(1), // D
@@ -4173,13 +4269,29 @@ public final class L2Player extends L2Playable
 	public void doAutoLoot(L2Attackable target, L2Attackable.RewardItem item)
 	{
 		if (!tryAutoLoot(target, item.getItemId()))
+		{
 			target.dropItem(this, item);
-		else if (isInParty())
+			return;
+		}
+
+		// HERB автопотребление (не раздаём по пати, не кладём в инвентарь)
+		if (tryConsumeHerb(item.getItemId(), item.getCount()))
+		{
+			return;
+		}
+
+		if (isInParty())
+		{
 			getParty().distributeItem(this, item, false, target);
+		}
 		else if (item.getItemId() == PlayerInventory.ADENA_ID)
+		{
 			addAdena("Loot", item.getCount(), target, true);
+		}
 		else
+		{
 			addItem("Loot", item.getItemId(), item.getCount(), target, true, false);
+		}
 	}
 	
 	private boolean tryAutoLoot(L2Attackable target, int itemId)
@@ -4191,7 +4303,7 @@ public final class L2Player extends L2Playable
 			return Config.ALT_AUTO_LOOT_ADENA;
 		
 		if (ItemTable.getInstance().getTemplate(itemId).getItemType() == L2EtcItemType.HERB)
-			return Config.ALT_AUTO_LOOT_HERBS;
+			return isAutoHerbPickupEnabled();
 		
 		if (target.isRaid())
 			return Config.ALT_AUTO_LOOT_RAID;
@@ -4218,39 +4330,35 @@ public final class L2Player extends L2Playable
 	protected void doPickupItem(L2Object object)
 	{
 		if (isAlikeDead() || isFakeDeath())
+		{
 			return;
+		}
 		
-		// Set the AI Intention to AI_INTENTION_IDLE
 		getAI().setIntention(CtrlIntention.AI_INTENTION_IDLE);
 		
-		// Check if the L2Object to pick up is a L2ItemInstance
 		if (!(object instanceof L2ItemInstance))
 		{
-			// Dont try to pickup anything that is not an item :)
 			_log.warn("trying to pickup wrong target." + getTarget());
 			return;
 		}
 		
 		L2ItemInstance target = (L2ItemInstance)object;
 		
-		// Send a Server->Client packet ActionFailed to this L2Player
 		sendPacket(ActionFailed.STATIC_PACKET);
 		
-		// Send a Server->Client packet StopMove to this L2Player
 		StopMove sm = new StopMove(getObjectId(), getX(), getY(), getZ(), getHeading());
 		if (_log.isDebugEnabled())
+		{
 			_log.debug("pickup pos: " + target.getX() + " " + target.getY() + " " + target.getZ());
+		}
 		sendPacket(sm);
 		
 		synchronized (target)
 		{
-			// Check if the target to pick up is visible
 			if (!target.isVisible())
 			{
-				// Send a Server->Client packet ActionFailed to this L2Player
 				sendPacket(ActionFailed.STATIC_PACKET);
 				return;
-				
 			}
 			
 			if (((isInParty() && getParty().getLootDistribution() == L2Party.ITEM_LOOTER) || !isInParty())
@@ -4305,7 +4413,6 @@ public final class L2Player extends L2Playable
 				return;
 			}
 			
-			// Cursed Weapons
 			if (CursedWeaponsManager.getInstance().isCursed(target.getItemId()) && isCursedWeaponEquipped())
 			{
 				ItemTable.getInstance().destroyItem("Pickup CW", target, this, null);
@@ -4314,24 +4421,33 @@ public final class L2Player extends L2Playable
 				return;
 			}
 			
-			// You can pickup only 1 combat flag
 			if (FortSiegeManager.getInstance().isCombat(target.getItemId()))
 			{
 				if (!FortSiegeManager.getInstance().checkIfCanPickup(this))
+				{
 					return;
+				}
 			}
 			
 			if (target.getItemLootShedule() != null
 					&& (target.getOwnerId() == getObjectId() || isInLooterParty(target.getOwnerId())))
+			{
 				target.resetOwnerTimer();
+			}
 			
-			// Remove the L2ItemInstance from the world and send server->client GetItem packets
 			target.pickupMe(this);
 		}
-		// Auto use herbs - pick up
+		
+		// Auto use herbs - pick up (consume and do not add to inventory)
 		if (target.getItemType() == L2EtcItemType.HERB)
 		{
 			ItemHandler.getInstance().useItem(target.getItemId(), this, target);
+			//SystemMessage smsg = new SystemMessage(SystemMessageId.YOU_PICKED_UP_S1);
+			//smsg.addItemName(target);
+			//sendPacket(smsg);
+
+			ItemTable.getInstance().destroyItem("Pickup", target, this, null);
+			return;
 		}
 		// Cursed Weapons are not distributed
 		else if (CursedWeaponsManager.getInstance().isCursed(target.getItemId()))
@@ -4344,7 +4460,6 @@ public final class L2Player extends L2Playable
 		}
 		else
 		{
-			// If item is instance of L2ArmorType or L2WeaponType broadcast an "Attention" system message
 			if (target.getItemType() instanceof L2ArmorType || target.getItemType() instanceof L2WeaponType)
 			{
 				if (target.getEnchantLevel() > 0)
@@ -4364,18 +4479,19 @@ public final class L2Player extends L2Playable
 				}
 			}
 			
-			// Check if a Party is in progress
 			if (isInParty())
+			{
 				getParty().distributeItem(this, target);
-			// Target is adena
+			}
 			else if (target.getItemId() == PlayerInventory.ADENA_ID && getInventory().getAdenaInstance() != null)
 			{
 				addAdena("Pickup", target.getCount(), null, true);
 				ItemTable.getInstance().destroyItem("Pickup", target, this, null);
 			}
-			// Target is regular item
 			else
+			{
 				addItem("Pickup", target, null, true);
+			}
 		}
 	}
 	
@@ -10796,11 +10912,13 @@ public final class L2Player extends L2Playable
 	@Override
 	public void addExpAndSp(long addToExp, int addToSp)
 	{
+		if (_expDisabled) { getStat().addExpAndSp(0L, addToSp, false); return; }
 		getStat().addExpAndSp(addToExp, addToSp, false);
 	}
 	
 	public void addExpAndSp(long addToExp, int addToSp, boolean useVitality)
 	{
+		if (_expDisabled) { getStat().addExpAndSp(0L, addToSp, useVitality); return; }
 		getStat().addExpAndSp(addToExp, addToSp, useVitality);
 	}
 	

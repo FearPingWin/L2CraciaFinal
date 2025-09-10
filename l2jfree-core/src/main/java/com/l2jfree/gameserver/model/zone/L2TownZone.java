@@ -1,20 +1,8 @@
-/*
- * This program is free software: you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation, either version 3 of the License, or (at your option) any later
- * version.
- * 
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
- * 
- * You should have received a copy of the GNU General Public License along with
- * this program. If not, see <http://www.gnu.org/licenses/>.
- */
 package com.l2jfree.gameserver.model.zone;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import javolution.util.FastMap;
 
@@ -33,41 +21,38 @@ public class L2TownZone extends L2Zone
 	{
 		TownManager.getInstance().registerTown(this);
 	}
-	
+
 	private final Map<Integer, Byte> _map = new FastMap<Integer, Byte>().setShared(true);
-	
+
+	private static final int PEACE_SPEED_BONUS = 200;
+	private static final Set<Integer> SPEED_ON = new ConcurrentSkipListSet<Integer>();
+
 	@Override
 	protected void onEnter(L2Creature character)
 	{
 		byte flag = FLAG_PEACE;
-		
+
 		switch (Config.ZONE_TOWN)
 		{
-			case 1: // PvP allowed for siege participants
+			case 1:
 			{
 				if (character instanceof L2Player && ((L2Player)character).getSiegeState() != 0)
 					flag = FLAG_PVP;
 				break;
 			}
-			case 2: // PvP in towns all the time
+			case 2:
 			{
 				flag = FLAG_PVP;
 				break;
 			}
 		}
-		
-		// TODO: PvP zone with debuffs etc. allowed or just general zone?
-		
+
 		_map.put(character.getObjectId(), flag);
-		
 		character.setInsideZone(flag, true);
-		
 		character.setInsideZone(FLAG_TOWN, true);
-		
+
 		super.onEnter(character);
-		
-		// Players must always see deco, not only inside clan hall.
-		// retail server behavior
+
 		if (character instanceof L2Player)
 		{
 			ClanHall[] townHalls = ClanHallManager.getInstance().getTownClanHalls(getTownId());
@@ -76,17 +61,37 @@ public class L2TownZone extends L2Zone
 					if (ch.getOwnerId() > 0)
 						character.getActingPlayer().sendPacket(new AgitDecoInfo(ch));
 		}
+
+		if (character instanceof L2Player)
+		{
+			L2Player player = (L2Player)character;
+			if (SPEED_ON.add(player.getObjectId()))
+			{
+				player.applyPeaceSpeedBonus(PEACE_SPEED_BONUS);
+				player.sendMessage("Peace zone speed applied.");
+			}
+		}
 	}
-	
+
 	@Override
 	protected void onExit(L2Creature character)
 	{
 		Byte flag = _map.remove(character.getObjectId());
-		if (flag != null) // just incase something would happen
+		if (flag != null)
 			character.setInsideZone(flag.byteValue(), false);
-		
+
 		character.setInsideZone(FLAG_TOWN, false);
-		
+
+		if (character instanceof L2Player)
+		{
+			L2Player player = (L2Player)character;
+			if (SPEED_ON.remove(player.getObjectId()))
+			{
+				player.removePeaceSpeedBonus();
+				player.sendMessage("Peace zone speed removed.");
+			}
+		}
+
 		super.onExit(character);
 	}
 }

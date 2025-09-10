@@ -20,7 +20,9 @@ import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.handler.voicedcommands.Auction;
 import com.l2jfree.gameserver.handler.voicedcommands.Banking;
 import com.l2jfree.gameserver.handler.voicedcommands.CastleDoors;
+import com.l2jfree.gameserver.handler.voicedcommands.ExpToggle;
 import com.l2jfree.gameserver.handler.voicedcommands.Hellbound;
+import com.l2jfree.gameserver.handler.voicedcommands.HerbToggle;
 import com.l2jfree.gameserver.handler.voicedcommands.Mail;
 import com.l2jfree.gameserver.handler.voicedcommands.Offline;
 import com.l2jfree.gameserver.handler.voicedcommands.Report;
@@ -28,6 +30,7 @@ import com.l2jfree.gameserver.handler.voicedcommands.VersionInfo;
 import com.l2jfree.gameserver.handler.voicedcommands.Wedding;
 import com.l2jfree.gameserver.model.restriction.global.GlobalRestrictions;
 import com.l2jfree.util.HandlerRegistry;
+import com.l2jfree.gameserver.handler.voicedcommands.GetBuff;
 
 public final class VoicedCommandHandler extends HandlerRegistry<String, IVoicedCommandHandler>
 {
@@ -52,6 +55,9 @@ public final class VoicedCommandHandler extends HandlerRegistry<String, IVoicedC
 		registerVoicedCommandHandler(new Report());
 		registerVoicedCommandHandler(new VersionInfo());
 		registerVoicedCommandHandler(new Wedding());
+		registerVoicedCommandHandler(new GetBuff());
+		registerVoicedCommandHandler(new ExpToggle());
+		registerVoicedCommandHandler(new HerbToggle());
 		
 		_log.info("VoicedCommandHandler: Loaded " + size() + " handlers.");
 	}
