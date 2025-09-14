@@ -10912,7 +10912,7 @@ private boolean tryConsumeHerb(int itemId, long count)
 	@Override
 	public void addExpAndSp(long addToExp, int addToSp)
 	{
-		addExpAndSp(addToExp, addToSp, true);
+		addExpAndSp(addToExp, addToSp, false);
 	}
 
 public void addExpAndSp(long addToExp, int addToSp, boolean useVitality)
