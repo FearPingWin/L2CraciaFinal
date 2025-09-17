@@ -16,23 +16,23 @@ package com.l2jfree.gameserver.network.packets.client;
 
 import static com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory.MAX_ADENA;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.Shutdown;
 import com.l2jfree.gameserver.Shutdown.DisableType;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.instancemanager.MarketManager;
 import com.l2jfree.gameserver.model.TradeList;
 import com.l2jfree.gameserver.model.zone.L2Zone;
 import com.l2jfree.gameserver.network.SystemMessageId;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 import com.l2jfree.gameserver.network.packets.server.ExPrivateStoreSetWholeMsg;
+import com.l2jfree.gameserver.network.packets.server.ItemList;
 import com.l2jfree.gameserver.network.packets.server.PrivateStoreManageListSell;
 import com.l2jfree.gameserver.network.packets.server.PrivateStoreMsgSell;
 
-/**
- * This class ...
- * 
- * @version $Revision: 1.2.2.1.2.5 $ $Date: 2005/03/27 15:29:30 $
- */
 public class SetPrivateStoreListSell extends L2ClientPacket
 {
 	private static final String _C__74_SETPRIVATESTORELISTSELL = "[C] 74 SetPrivateStoreListSell";
@@ -133,6 +133,62 @@ public class SetPrivateStoreListSell extends L2ClientPacket
 			}
 		}
 		
+		/* =========================
+		 * РЫНОК ЧЕРЕЗ ИНВЕНТАРЬ (наш модальный режим)
+		 * Если открыт наш режим — НЕ запускаем личный магазин,
+		 * а переносим выбранные вещи в MARKET и создаём лоты.
+		 * ========================= */
+		if (player.isMarketModal())
+		{
+			try
+			{
+				// Синхронизируем список с инвентарём, чтобы получить конкретные objectId и допустимые count
+				tradeList.updateItems();
+				
+				TradeList.TradeItem[] items = tradeList.getItems();
+				final List<MarketManager.ItemRequest> reqs = new ArrayList<MarketManager.ItemRequest>(items.length);
+				
+				for (TradeList.TradeItem ti : items)
+				{
+					if (ti == null)
+						continue;
+					final int objectId = ti.getObjectId();
+					final long count = ti.getCount();
+					final long unitPrice = ti.getPrice();  // цена за 1 штуку
+					final long totalPrice = unitPrice * count;   // в market_listings храним цену за весь стак
+					
+					reqs.add(new MarketManager.ItemRequest(objectId, count, totalPrice));
+				}
+				
+				// Перенос в MARKET + INSERT в market_listings (менеджер сам обновит инвентарь пакетами)
+				MarketManager.getInstance().commitListingsFromInventory(player, reqs);
+				
+				// Чистим временный sell list и выключаем модальный режим
+				tradeList.clear();
+				player.setPrivateStoreType(L2Player.STORE_PRIVATE_NONE);
+				player.broadcastUserInfo();
+				player.stopMarketModal();
+				
+				// На всякий случай обновим список предметов клиенту и подтвердим действие
+				player.sendPacket(new ItemList(player, false));
+				player.sendMessage("Лоты выставлены. Предметы перемещены на рынок.");
+				
+				sendAF();
+				return; // ВАЖНО: личный магазин не запускаем
+			}
+			catch (Exception e)
+			{
+				// Вернём игрока к окну управления продажей и покажем ошибку
+				sendPacket(new PrivateStoreManageListSell(player, _packageSale));
+				player.sendMessage("Ошибка выставления: " + e.getMessage());
+				player.stopMarketModal();
+				
+				sendAF();
+				return;
+			}
+		}
+		
+
 		player.sitDown();
 		
 		if (_packageSale)

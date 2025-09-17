@@ -425,6 +425,33 @@ public final class L2Player extends L2Playable
 	public void setExpDisabled(boolean value) { _expDisabled = value; }
 	public void disableExpGain() { _expDisabled = true; }
 	public void enableExpGain() { _expDisabled = false; }
+	// --- MARKET modal begin ---
+	private boolean _marketModal = false;     // открыт режим выставления на продажу
+	private int _invLockMask = 0;             // маска блокировок инвентаря
+
+	private boolean _marketWithdrawModal = false;
+	public void startMarketWithdrawModal() { _marketWithdrawModal = true; }
+	public void stopMarketWithdrawModal()  { _marketWithdrawModal = false; }
+	public boolean isMarketWithdrawModal() { return _marketWithdrawModal; }
+	public static final int INV_LOCK_MARKET = 1 << 0;
+public void startMarketModal() {
+    _marketModal = true;
+    _invLockMask |= INV_LOCK_MARKET;
+}
+
+public void stopMarketModal() {
+    _marketModal = false;
+    _invLockMask &= ~INV_LOCK_MARKET;
+}
+
+public boolean isMarketModal() {
+    return _marketModal;
+}
+
+public boolean isInventoryLocked() {
+    return _invLockMask != 0;
+}
+// --- MARKET modal end ---
 private static final FuncOwner PEACE_SPEED_OWNER = new FuncOwner() {
     @Override
     public String getFuncOwnerName() { return "PEACE_SPEED"; }
@@ -492,15 +519,7 @@ private boolean tryConsumeHerb(int itemId, long count)
 		}
 	}
 
-	// как при ручном пикапе
-	/*SystemMessage smsg = (count > 1)
-		? new SystemMessage(SystemMessageId.YOU_PICKED_UP_S1_S2)
-		: new SystemMessage(SystemMessageId.YOU_PICKED_UP_S1);
-	smsg.addItemName(itemId);
-	if (count > 1) { smsg.addItemNumber(count); }
-	sendPacket(smsg);*/
-
-	return true; // потребили — не кладём в инвентарь
+	return true;
 }
 
 

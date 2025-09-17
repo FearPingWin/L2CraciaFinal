@@ -94,7 +94,8 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 		PET_EQUIP,
 		LEASE,
 		FREIGHT,
-		NPC
+		NPC,
+		MARKET
 	}
 	
 	/** ID of the owner */

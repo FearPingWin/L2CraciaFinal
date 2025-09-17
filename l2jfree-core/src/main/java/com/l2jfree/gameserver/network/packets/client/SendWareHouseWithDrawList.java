@@ -21,8 +21,12 @@ import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.ClanWarehouse;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.ItemContainer;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.MarketContainer;
 import com.l2jfree.gameserver.model.clan.L2Clan;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
+import com.l2jfree.gameserver.model.items.L2ItemInstance.ItemLocation;
+import com.l2jfree.gameserver.model.world.L2World;
+import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.network.SystemMessageId;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 import com.l2jfree.gameserver.network.packets.server.InventoryUpdate;
@@ -32,18 +36,18 @@ import com.l2jfree.gameserver.util.FloodProtector;
 import com.l2jfree.gameserver.util.FloodProtector.Protected;
 
 /**
- * This class ...
- *
  * 32  SendWareHouseWithDrawList  cd (dd)
- * WootenGil rox :P
- * @version $Revision: 1.2.2.1.2.4 $ $Date: 2005/03/29 23:15:16 $
+ * 
+ * Добавлено: поддержка модального режима "забрать с РЫНКА".
+ * Если у игрока активен isMarketWithdrawModal(), вместо склада
+ * источником выступает контейнер MARKET.
  */
 public class SendWareHouseWithDrawList extends L2ClientPacket
 {
 	private static final String _C__32_SENDWAREHOUSEWITHDRAWLIST = "[C] 32 SendWareHouseWithDrawList";
 	
-	private static final int BATCH_LENGTH = 8; // length of the one item
-	private static final int BATCH_LENGTH_FINAL = 12;
+	private static final int BATCH_LENGTH = 8;   // length of one item (final=false)
+	private static final int BATCH_LENGTH_FINAL = 12; // при PACKET_FINAL
 	
 	private WarehouseItem _items[] = null;
 	
@@ -91,6 +95,155 @@ public class SendWareHouseWithDrawList extends L2ClientPacket
 			requestFailed(SystemMessageId.FUNCTION_INACCESSIBLE_NOW);
 			return;
 		}
+
+		/* =========================================================
+		 * РЕЖИМ РЫНКА: забираем из MARKET, а не из WAREHOUSE
+		 * ========================================================= */
+		if (player.isMarketWithdrawModal())
+		{
+			// (1) Предварительные расчёты веса и слотов
+			int weight = 0;
+			int slots = 0;
+
+			for (WarehouseItem wi : _items)
+			{
+				L2Object obj = L2World.getInstance().findObject(wi.getObjectId());
+				if (!(obj instanceof L2ItemInstance))
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					return;
+				}
+				L2ItemInstance item = (L2ItemInstance)obj;
+
+				if (item.getOwnerId() != player.getObjectId() || item.getLocation() != ItemLocation.MARKET)
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					return;
+				}
+				if (wi.getCount() < 1 || item.getCount() < wi.getCount())
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					return;
+				}
+
+				weight += (int)(wi.getCount() * item.getItem().getWeight());
+				if (!item.isStackable())
+					slots += wi.getCount();
+				else if (player.getInventory().getItemByItemId(item.getItemId()) == null)
+					slots++;
+			}
+
+			// Лимиты
+			if (!player.getInventory().validateCapacity(slots))
+			{
+				requestFailed(SystemMessageId.SLOTS_FULL);
+				return;
+			}
+			if (!player.getInventory().validateWeight(weight))
+			{
+				requestFailed(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				return;
+			}
+
+			// (2) Перенос
+			InventoryUpdate playerIU = Config.FORCE_INVENTORY_UPDATE ? null : new InventoryUpdate();
+			MarketContainer box = new MarketContainer(player);
+
+			for (WarehouseItem wi : _items)
+			{
+				// прикрепим живой инстанс к MARKET-контейнеру
+				L2Object obj = L2World.getInstance().findObject(wi.getObjectId());
+				if (!(obj instanceof L2ItemInstance))
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					return;
+				}
+				L2ItemInstance oldItem = (L2ItemInstance)obj;
+				if (oldItem.getOwnerId() != player.getObjectId() || oldItem.getLocation() != ItemLocation.MARKET)
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					return;
+				}
+				if (oldItem.getCount() < wi.getCount())
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					return;
+				}
+
+				// Добавим в контейнер и перенесём в инвентарь
+				box.attachExisting(oldItem.getObjectId());
+				L2ItemInstance newItem = box.transferItem(
+						"MarketWithdraw", oldItem.getObjectId(), wi.getCount(), player.getInventory(), player, null);
+
+				if (newItem == null)
+				{
+					requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
+					_log.warn("Error withdrawing a market object for char " + player.getName() + " (newitem == null)");
+					return;
+				}
+
+				if (playerIU != null)
+				{
+					// если объединение со стеком — modified, иначе new
+					if (newItem.getCount() > wi.getCount())
+						playerIU.addModifiedItem(newItem);
+					else
+						playerIU.addNewItem(newItem);
+				}
+
+				// (3) Обновим market_listings: если остатка нет — CANCELLED, иначе уменьшим count
+				try (java.sql.Connection con = com.l2jfree.L2DatabaseFactory.getInstance().getConnection())
+				{
+					// осталось ли что-то в MARKET по этому object_id?
+					L2ItemInstance remain = box.getItemByObjectId(wi.getObjectId());
+					if (remain == null || remain.getCount() <= 0)
+					{
+						try (java.sql.PreparedStatement ps = con.prepareStatement(
+								"UPDATE market_listings SET status='CANCELLED' WHERE item_object_id=? AND owner_char_id=? AND status='LISTED'"))
+						{
+							ps.setInt(1, wi.getObjectId());
+							ps.setInt(2, player.getObjectId());
+							ps.executeUpdate();
+						}
+					}
+					else
+					{
+						try (java.sql.PreparedStatement ps = con.prepareStatement(
+								"UPDATE market_listings SET count=count-? WHERE item_object_id=? AND owner_char_id=? AND status='LISTED' AND count>=?"))
+						{
+							ps.setLong(1, wi.getCount());
+							ps.setInt(2, wi.getObjectId());
+							ps.setInt(3, player.getObjectId());
+							ps.setLong(4, wi.getCount());
+							ps.executeUpdate();
+						}
+					}
+				}
+				catch (Exception e)
+				{
+					_log.warn("Market listings update failed for char " + player.getName() + ": " + e.getMessage(), e);
+				}
+			}
+
+			// (4) Отправим обновления клиенту
+			if (playerIU != null)
+				player.sendPacket(playerIU);
+			else
+				player.sendPacket(new ItemList(player, false));
+
+			StatusUpdate su = new StatusUpdate(player.getObjectId());
+			su.addAttribute(StatusUpdate.CUR_LOAD, player.getCurrentLoad());
+			sendPacket(su);
+
+			// выйти из режима рынка
+			player.stopMarketWithdrawModal();
+			sendAF();
+			return;
+		}
+
+		/* =========================================================
+		 * Ниже — СТАНДАРТНОЕ ПОВЕДЕНИЕ СКЛАДА (без изменений)
+		 * ========================================================= */
 		
 		ItemContainer warehouse = player.getActiveWarehouse();
 		if (warehouse == null)
@@ -144,12 +297,7 @@ public class SendWareHouseWithDrawList extends L2ClientPacket
 			// Calculate needed slots
 			L2ItemInstance item = warehouse.getItemByObjectId(i.getObjectId());
 			if (item == null || item.getCount() < i.getCount())
-			{/*
-				Util.handleIllegalPlayerAction(player, "Warning!! Character "
-						+ player.getName() + " of account "
-						+ player.getAccountName() + " tried to withdraw non-existent item from warehouse.",
-						Config.DEFAULT_PUNISH);
-				*/
+			{
 				requestFailed(SystemMessageId.NO_ITEM_DEPOSITED_IN_WH);
 				return;
 			}

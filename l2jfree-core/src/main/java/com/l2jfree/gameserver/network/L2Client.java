@@ -569,9 +569,15 @@ public final class L2Client extends MMOConnection<L2Client, L2ClientPacket, L2Se
 	@Override
 	protected void onDisconnection()
 	{
-		new Disconnection(this).onDisconnection();
-		
-		setDisconnected();
+		try {
+			final L2Player pc = getActiveChar();
+			if (pc != null && pc.isMarketModal()) {
+				pc.stopMarketModal();
+			}
+		} finally {
+			new Disconnection(this).onDisconnection();
+			setDisconnected();
+		}
 	}
 	
 	@Override

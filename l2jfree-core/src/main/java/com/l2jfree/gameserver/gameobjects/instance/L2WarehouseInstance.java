@@ -14,20 +14,28 @@
  */
 package com.l2jfree.gameserver.gameobjects.instance;
 
+import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.Map;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.util.List;
 
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.cache.HtmCache;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.MarketContainer;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerFreight;
 import com.l2jfree.gameserver.gameobjects.templates.L2NpcTemplate;
 import com.l2jfree.gameserver.instancemanager.TownManager;
 import com.l2jfree.gameserver.model.clan.L2Clan;
 import com.l2jfree.gameserver.model.entity.Town;
+import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.SystemMessageId;
 import com.l2jfree.gameserver.network.packets.server.ActionFailed;
 import com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage;
 import com.l2jfree.gameserver.network.packets.server.PackageToList;
+import com.l2jfree.gameserver.network.packets.server.PrivateStoreManageListSell;
 import com.l2jfree.gameserver.network.packets.server.SortedWareHouseWithdrawalList;
 import com.l2jfree.gameserver.network.packets.server.SortedWareHouseWithdrawalList.WarehouseListType;
 import com.l2jfree.gameserver.network.packets.server.WareHouseDepositList;
@@ -369,6 +377,114 @@ public final class L2WarehouseInstance extends L2NpcInstance
 		{
 			if (Config.ALLOW_FREIGHT && param.length > 1)
 				showDepositWindowFreight(player, Integer.parseInt(param[1]));
+		}
+		else if (command.equalsIgnoreCase("market_list"))
+		{
+			player.startMarketModal();
+			player.setPrivateStoreType(0); // на всякий случай, чтобы не был активен личный магазин
+			player.sendPacket(new PrivateStoreManageListSell(player, false));
+			player.sendPacket(ActionFailed.STATIC_PACKET);
+			return;
+		}
+		else if (command.equalsIgnoreCase("market_my"))
+		{
+			StringBuilder sb = new StringBuilder(512);
+			sb.append("<html><body>");
+			sb.append("Мои лоты на продаже:<br>");
+
+			try (java.sql.Connection con = com.l2jfree.L2DatabaseFactory.getInstance().getConnection();
+				java.sql.PreparedStatement ps = con.prepareStatement(
+					"SELECT listing_id, item_id, enchant_level, count, price_adena " +
+					"FROM market_listings WHERE owner_char_id=? AND status='LISTED' " +
+					"ORDER BY created_at DESC LIMIT 100"))
+			{
+				ps.setInt(1, player.getObjectId());
+				try (java.sql.ResultSet rs = ps.executeQuery())
+				{
+					boolean any = false;
+					while (rs.next())
+					{
+						any = true;
+						long listingId = rs.getLong(1);
+						int itemId     = rs.getInt(2);
+						int enchant    = rs.getInt(3);
+						long count     = rs.getLong(4);
+						long price     = rs.getLong(5);
+
+						// Печатаем без имени из ItemTable, чтобы ничего не падало
+						sb.append("• item_id: ").append(itemId);
+						if (enchant > 0) sb.append(" +").append(enchant);
+						sb.append(" x").append(count).append(" — ").append(price).append(" адена ");
+						sb.append("<a action=\"bypass -h npc_%objectId%_market_take_").append(listingId).append("\">[Снять]</a><br>");
+					}
+					if (!any)
+						sb.append("Активных лотов нет.<br>");
+				}
+			}
+			catch (Exception e)
+			{
+				// Никаких деталей — просто строка, чтобы не ломать HTML
+				sb.append("Ошибка загрузки лотов.<br>");
+			}
+
+			sb.append("<br><a action=\"bypass -h npc_%objectId%_Link warehouse/warehouse.htm\">Назад</a>");
+			sb.append("</body></html>");
+
+			com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage html =
+				new com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage(getObjectId());
+			html.setHtml(sb.toString());
+			html.replace("%objectId%", String.valueOf(getObjectId()));
+			player.sendPacket(html);
+			return;
+		}
+		else if (command.startsWith("market_take"))
+		{
+			String[] p = command.split("_");
+			if (p.length < 3) {
+				player.sendMessage("Не указан идентификатор лота.");
+				onBypassFeedback(player, "market_my");
+				return;
+			}
+
+			try {
+				long listingId = Long.parseLong(p[2]);
+				com.l2jfree.gameserver.instancemanager.MarketManager.getInstance()
+					.withdrawListingToInventory(player, listingId); // <-- в ИНВЕНТАРЬ
+			} catch (Exception e) {
+				player.sendMessage("Не удалось снять лот: " + e.getMessage());
+			}
+			// Вернём обновлённый список
+			onBypassFeedback(player, "market_my");
+			return;
+		}
+		else if (command.equalsIgnoreCase("market_withdraw_ui"))
+		{
+			List<L2ItemInstance> list = new ArrayList<L2ItemInstance>();
+
+			try (Connection con = com.l2jfree.L2DatabaseFactory.getInstance().getConnection();
+				PreparedStatement ps = con.prepareStatement(
+					"SELECT item_object_id FROM market_listings " +
+					"WHERE owner_char_id=? AND status='LISTED' ORDER BY created_at DESC LIMIT 200"))
+			{
+				ps.setInt(1, player.getObjectId());
+				try (ResultSet rs = ps.executeQuery()) {
+					MarketContainer box = new MarketContainer(player);
+					while (rs.next()) {
+						int objId = rs.getInt(1);
+						L2ItemInstance item = box.attachExisting(objId);
+						if (item != null) list.add(item);
+					}
+				}
+			} catch (Exception e) {
+				player.sendMessage("Ошибка подготовки списка: " + e.getMessage());
+			}
+
+			player.startMarketWithdrawModal();
+
+			L2ItemInstance[] arr = list.toArray(new L2ItemInstance[0]);
+			player.sendPacket(new WareHouseWithdrawalList(player, arr, WareHouseWithdrawalList.PRIVATE));
+			player.sendPacket(ActionFailed.STATIC_PACKET);
+			return;
 		}
 		else
 		{
