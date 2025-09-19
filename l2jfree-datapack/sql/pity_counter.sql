@@ -1,0 +1,55 @@
+-- =========================================================
+-- Pity Counter schema (L2JFree Gracia Final)
+-- Система групповой гарантии для предметов с низким шансом
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS `pity_item_counter` (
+  `char_id`       INT UNSIGNED      NOT NULL COMMENT 'Идентификатор персонажа',
+  `item_id`       INT               NOT NULL COMMENT 'Идентификатор предмета',
+  `category`      TINYINT  NOT NULL COMMENT 'Категория 1/2/3 (отдельный учёт по каждой)',
+  `source`        ENUM('DROP','SPOIL') NOT NULL COMMENT 'Источник дропа: обычный или спойл',
+  `meter_ppm`     BIGINT UNSIGNED   NOT NULL DEFAULT 0 COMMENT 'Счётчик в частях на миллион (1.0 = 1,000,000)',
+  `updated_at`    TIMESTAMP         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`char_id`, `item_id`, `source`),
+  KEY `idx_item_cat_src` (`item_id`, `category`, `source`),
+  KEY `idx_char_cat_src` (`char_id`, `category`, `source`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC COMMENT='Прогресс гарантированного дропа по отдельным предметам (старая система)';
+
+-- Новая таблица для групповой гарантии
+CREATE TABLE IF NOT EXISTS `pity_group_progress` (
+  `char_id`       INT UNSIGNED      NOT NULL COMMENT 'Идентификатор персонажа',
+  `npc_id`        INT               NOT NULL COMMENT 'ID моба (отдельная группа на каждого моба)',
+  `l2_category`   TINYINT           NOT NULL COMMENT 'Исходная L2 категория (1,2,3)',
+  `pity_category` SMALLINT          NOT NULL COMMENT 'Расчетная категория по интервалам вероятности (1001, 1002, 1003...)',
+  `source`        ENUM('DROP','SPOIL') NOT NULL COMMENT 'Источник дропа: обычный или спойл',
+  `group_sum_ppm` BIGINT UNSIGNED   NOT NULL DEFAULT 0 COMMENT 'Накопленная сумма шансов группы в PPM',
+  `group_items`   TEXT              NULL COMMENT 'JSON список всех item_id в группе (для проверки консистентности)',
+  `excluded_items` TEXT             NULL COMMENT 'JSON список выданных item_id в текущем цикле',
+  `cycle_id`      INT UNSIGNED      NOT NULL DEFAULT 1 COMMENT 'Номер цикла (увеличивается при сбросе группы)',
+  `updated_at`    TIMESTAMP         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`char_id`, `npc_id`, `l2_category`, `pity_category`, `source`),
+  KEY `idx_char_cycle` (`char_id`, `cycle_id`),
+  KEY `idx_npc_cat_src` (`npc_id`, `l2_category`, `pity_category`, `source`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC COMMENT='Прогресс групповой гарантии для предметов с низким шансом (отдельно по мобам и L2 категориям)';
+
+-- Подсказки по использованию новой системы:
+-- 1) Порог участия в групповой гарантии: 2% (20,000 PPM)
+-- 2) Предметы с шансом < 2% попадают в группу, остальные работают по старой логике
+-- 3) Ключ группы: (char_id, npc_id, l2_category, pity_category, source)
+-- 4) l2_category - исходная L2 категория (1,2,3), pity_category - расчетная (1001,1002...)
+-- 5) Категории вычисляются автоматически по интервалам вероятности:
+--    * 1001: 0.0001%-0.0099% | 1002: 0.01%-0.0299% | 1003: 0.03%-0.0499%
+--    * 1004: 0.05%-0.0999%  | 1005: 0.1%-0.1999%   | 1006: 0.2%-0.4999%
+--    * 1007: 0.5%-0.9999%   | 1008: 1%-1.9999%     | 1999: 2%+ (без гарантии)
+-- 6) Каждый моб и каждая L2 категория имеет ОТДЕЛЬНУЮ группу гарантии
+-- 7) group_items содержит полный список предметов группы для проверки консистентности
+-- 8) excluded_items содержит предметы, выданные в текущем цикле
+-- 9) При изменении состава группы автоматически сбрасывается прогресс
+-- 10) На каждом убийстве добавляется сумма шансов всех предметов группы (исключая выданные)
+-- 11) При достижении 100% (1,000,000 PPM) выбирается случайный предмет из группы
+-- 12) Выданный предмет добавляется в excluded_items до сброса цикла
+-- 13) Когда все предметы группы выданы - начинается новый цикл (cycle_id++, excluded_items=NULL)
+-- 14) Категория 0 (адена) НЕ участвует в групповой гарантии
+-- 15) Безопасность: невозможно накопить прогресс на слабых мобах и получить дроп с сильных

@@ -27,6 +27,8 @@ import com.l2jfree.gameserver.datatables.EventDroplist;
 import com.l2jfree.gameserver.datatables.EventDroplist.DateDrop;
 import com.l2jfree.gameserver.datatables.ItemTable;
 import com.l2jfree.gameserver.datatables.SkillTable;
+import com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO;
+import com.l2jfree.gameserver.dropguarantee.DropGuaranteeGroupLogic;
 import com.l2jfree.gameserver.gameobjects.ai.CtrlIntention;
 import com.l2jfree.gameserver.gameobjects.ai.L2AttackableAI;
 import com.l2jfree.gameserver.gameobjects.ai.L2CreatureAI;
@@ -1226,57 +1228,88 @@ public class L2Attackable extends L2Npc
 		else
 			return null;
 	}
-	
-	/**
-	 * Calculates quantity of items for specific drop CATEGORY according to
-	 * current situation <br>
-	 * Only a max of ONE item from a category is allowed to be dropped.
-	 * 
-	 * @param drop The L2DropData count is being calculated for
-	 * @param lastAttacker The L2Player that has killed the L2Attackable
-	 * @param deepBlueDrop Factor to divide the drop chance
-	 * @param levelModifier level modifier in %'s (will be subtracted from drop
-	 *            chance)
-	 */
-	private RewardItem calculateCategorizedRewardItem(L2Player lastAttacker, L2DropCategory categoryDrops,
-			int levelModifier)
+
+private RewardItem calculateCategorizedRewardItem(com.l2jfree.gameserver.gameobjects.L2Player lastAttacker,
+                                                 L2DropCategory categoryDrops,
+                                                 int levelModifier)	
 	{
-		if (categoryDrops == null)
-			return null;
-		
-		// Get default drop chance for the category (that's the sum of chances for all items in the category)
-		// keep track of the base category chance as it'll be used later, if an item is drop from the category.
-		// for everything else, use the total "categoryDropChance"
-		final long categoryDropChance =
-				calculateDropChance(categoryDrops.getCategoryChance(), null, false, levelModifier);
-		
-		// Check if an Item from this category must be dropped
-		if (Rnd.get(L2DropData.MAX_CHANCE) < categoryDropChance)
-		{
-			L2DropData drop = categoryDrops.dropOne();
-			if (drop == null)
-				return null;
-			
-			// Now decide the quantity to drop based on the rates and penalties.  To get this value
-			// simply divide the modified categoryDropChance by the base category chance.  This
-			// results in a chance that will dictate the drops amounts: for each amount over 100
-			// that it is, it will give another chance to add to the min/max quantities.
-			//
-			// For example, If the final chance is 120%, then the item should drop between
-			// its min and max one time, and then have 20% chance to drop again.  If the final
-			// chance is 330%, it will similarly give 3 times the min and max, and have a 30%
-			// chance to give a 4th time.
-			// At least 1 item will be dropped for sure.  So the chance will be adjusted to 100%
-			// if smaller.
-			
-			final long dropChance = calculateDropChance(drop.getChance(), drop, false, levelModifier);
-			
-			return dropItem(Math.max(dropChance, L2DropData.MAX_CHANCE), drop);
-		}
-		
-		return null;
-	}
-	
+    if (categoryDrops == null)
+        return null;
+
+    final int catType = categoryDrops.getCategoryType();
+    final DropGuaranteeDAO.Source source = DropGuaranteeDAO.Source.DROP;
+    
+    // Проверяем, участвует ли категория в новой системе групповой гарантии
+    if (!DropGuaranteeGroupLogic.isGroupEligible(catType, source)) {
+        // Для категории 0 (адены) - используем старую логику
+        return calculateCategorizedRewardItemOld(lastAttacker, categoryDrops, levelModifier);
+    }
+    
+    // Новая система групповой гарантии
+    try {
+        // Создаем калькулятор шансов
+        DropGuaranteeGroupLogic.ChanceCalculator calculator = (drop) -> 
+            calculateDropChance(drop.getChance(), drop, false, levelModifier);
+        
+        // Группируем предметы по расчетным категориям вероятности
+        java.util.Map<Integer, java.util.List<DropGuaranteeGroupLogic.ItemWithChance>> groups = 
+            DropGuaranteeGroupLogic.groupItemsByPityCategory(categoryDrops, calculator);
+        
+        // Обрабатываем каждую группу
+        for (java.util.Map.Entry<Integer, java.util.List<DropGuaranteeGroupLogic.ItemWithChance>> entry : groups.entrySet()) {
+            int pityCategory = entry.getKey();
+            java.util.List<DropGuaranteeGroupLogic.ItemWithChance> groupItems = entry.getValue();
+            
+            // Проверяем, нужна ли гарантия для этой группы
+            if (pityCategory >= DropGuaranteeGroupLogic.CALCULATED_CATEGORY_BASE + 999) {
+                // Группа с высоким шансом - используем обычную логику без гарантии
+                L2DropData highChanceResult = DropGuaranteeGroupLogic.processHighChanceItems(groupItems);
+                if (highChanceResult != null) {
+                    final long itemChanceScaled = calculateDropChance(highChanceResult.getChance(), highChanceResult, false, levelModifier);
+                    return dropItem(Math.max(itemChanceScaled, L2DropData.MAX_CHANCE), highChanceResult);
+                }
+            } else {
+                // Группа с низким шансом - используем гарантийную логику
+                DropGuaranteeGroupLogic.GroupResult groupResult = 
+                    DropGuaranteeGroupLogic.processLowChanceGroup(lastAttacker.getObjectId(), getNpcId(), catType, pityCategory, source, groupItems);
+                
+                if (groupResult.groupTriggered && groupResult.guaranteedItem != null) {
+                    // Групповая гарантия сработала - выдаем гарантированный предмет
+                    return dropItem(DropGuaranteeDAO.ONE_PPM_UNIT, groupResult.guaranteedItem);
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (Exception e) {
+        // В случае ошибки групповой системы - используем старую логику
+        return calculateCategorizedRewardItemOld(lastAttacker, categoryDrops, levelModifier);
+    }
+}
+
+/**
+ * Старая логика для категорий, не участвующих в новой системе (например, адена)
+ */
+private RewardItem calculateCategorizedRewardItemOld(L2Player lastAttacker, L2DropCategory categoryDrops, int levelModifier) {
+    if (categoryDrops == null)
+        return null;
+    
+    // Получаем шанс категории
+    final long categoryDropChance = calculateDropChance(categoryDrops.getCategoryChance(), null, false, levelModifier);
+    
+    // Проверяем, должен ли выпасть предмет из этой категории
+    if (Rnd.get(L2DropData.MAX_CHANCE) < categoryDropChance) {
+        L2DropData drop = categoryDrops.dropOne();
+        if (drop == null)
+            return null;
+        
+        final long dropChance = calculateDropChance(drop.getChance(), drop, false, levelModifier);
+        return dropItem(Math.max(dropChance, L2DropData.MAX_CHANCE), drop);
+    }
+    
+    return null;
+}
 	/**
 	 * Calculates the level modifier for drop<br>
 	 * 
@@ -1309,6 +1342,30 @@ public class L2Attackable extends L2Npc
 		doItemDrop(getTemplate(), lastAttacker);
 	}
 	
+
+private int dgResolveSpoilerId() {
+    try {
+        java.lang.reflect.Method m = getClass().getMethod("getIsSpoiledBy");
+        Object v = m.invoke(this);
+        if (v instanceof Integer) return (Integer)v;
+    } catch (Throwable ignored) {}
+    try {
+        java.lang.reflect.Method m = getClass().getMethod("getSpoilerId");
+        Object v = m.invoke(this);
+        if (v instanceof Integer) return (Integer)v;
+    } catch (Throwable ignored) {}
+    return 0;
+}
+
+private com.l2jfree.gameserver.gameobjects.L2Player dgResolveSpoilerPlayer(com.l2jfree.gameserver.gameobjects.L2Creature fallback) {
+    int sid = dgResolveSpoilerId();
+    if (sid > 0) {
+        com.l2jfree.gameserver.gameobjects.L2Player p =
+            com.l2jfree.gameserver.model.world.L2World.getInstance().getPlayer(sid);
+        if (p != null) return p;
+    }
+    return fallback != null ? fallback.getActingPlayer() : null;
+}
 	/**
 	 * Manage Base, Quests and Special Events drops of L2Attackable (called by
 	 * calculateRewards).<BR>
@@ -1360,28 +1417,67 @@ public class L2Attackable extends L2Npc
 			{
 				RewardItem item = null;
 				if (cat.isSweep())
-				{
-					// according to sh1ny, seeded mobs CAN be spoiled and swept.
-					if (isSpoil()/* && !isSeeded() */)
-					{
-						ArrayBunch<RewardItem> sweepList = new ArrayBunch<RewardItem>();
-						
-						for (L2DropData drop : cat.getAllDrops())
-						{
-							item = calculateRewardItem(player, drop, levelModifier, true);
-							if (item == null)
-								continue;
-							
-							if (_log.isDebugEnabled())
-								_log.info("Item id to spoil: " + item.getItemId() + " amount: " + item.getCount());
-							sweepList.add(item);
-						}
-						
-						// Set the table _sweepItems of this L2Attackable
-						if (!sweepList.isEmpty())
-							_sweepItems = sweepList.moveToArray(new RewardItem[sweepList.size()]);
-					}
-				}
+{
+    // Обрабатываем СПОЙЛ ТОЛЬКО если моб реально был заспойлен
+    final int spoilerId = dgResolveSpoilerId();
+    if (spoilerId <= 0)
+        continue; // ← ИСПРАВЛЕНО: используем continue вместо return
+
+    final com.l2jfree.gameserver.gameobjects.L2Player spoiler = dgResolveSpoilerPlayer(lastAttacker);
+    if (spoiler == null)
+        continue; // ← ИСПРАВЛЕНО: используем continue вместо return
+
+    final ArrayBunch<RewardItem> sweepList = new ArrayBunch<RewardItem>();
+
+    for (L2DropData drop : cat.getAllDrops())
+    {
+        // Эффективный шанс конкретного spoil-предмета
+        final long pScaled  = calculateDropChance(drop.getChance(), drop, /*isSweep=*/true, levelModifier);
+        final long pClamped = Math.min(Math.max(pScaled, 0L), L2DropData.MAX_CHANCE);
+
+        // Гарантия для SPOIL по ЭТОМУ предмету (категория у sweep обычно -1 — это ОК)
+        boolean guaranteed = false;
+        try {
+            final double p = pClamped / (double)L2DropData.MAX_CHANCE; // 0..1
+            final long deltaPpm = Math.round(p * com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO.ONE_PPM_UNIT);
+
+            guaranteed = com.l2jfree.gameserver.dropguarantee.DropGuaranteeLogic.addAndCheckGuaranteed(
+                    spoiler.getObjectId(),
+                    drop.getItemId(),
+                    cat.getCategoryType(), // чаще всего -1
+                    com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO.Source.SPOIL,
+                    deltaPpm
+            );
+        } catch (Exception e) {
+            _log.warn("DropGuarantee(SPOIL) add/check failed", e);
+        }
+
+        // Решение: гарант ИЛИ обычный ролл предмета
+        final boolean rollOk = com.l2jfree.tools.random.Rnd.get(L2DropData.MAX_CHANCE) < pClamped;
+        if (!(guaranteed || rollOk))
+            continue;
+
+        // Выдаём и ОБНУЛЯЕМ счётчик
+        final RewardItem item2 = dropItem(Math.max(pScaled, L2DropData.MAX_CHANCE), drop);
+        if (item2 != null) {
+            sweepList.add(item2); // ← ИСПРАВЛЕНО: используем item2
+            try {
+                com.l2jfree.gameserver.dropguarantee.DropGuaranteeLogic.resetAfterAward(
+                        spoiler.getObjectId(),
+                        drop.getItemId(),
+                        com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO.Source.SPOIL
+                );
+            } catch (Exception e) {
+                _log.warn("DropGuarantee(SPOIL) reset failed", e);
+            }
+        }
+    }
+
+    if (!sweepList.isEmpty())
+        _sweepItems = sweepList.moveToArray(new RewardItem[sweepList.size()]);
+
+    continue; // sweep обработан, переходим к следующей категории
+}
 				else
 				{
 					if (isSeeded())
