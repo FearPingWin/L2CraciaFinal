@@ -1417,67 +1417,80 @@ private com.l2jfree.gameserver.gameobjects.L2Player dgResolveSpoilerPlayer(com.l
 			{
 				RewardItem item = null;
 				if (cat.isSweep())
-{
-    // Обрабатываем СПОЙЛ ТОЛЬКО если моб реально был заспойлен
-    final int spoilerId = dgResolveSpoilerId();
-    if (spoilerId <= 0)
-        continue; // ← ИСПРАВЛЕНО: используем continue вместо return
+				{
+					// Обрабатываем СПОЙЛ ТОЛЬКО если моб реально был заспойлен
+					final int spoilerId = dgResolveSpoilerId();
+					if (spoilerId <= 0)
+						continue;
 
-    final com.l2jfree.gameserver.gameobjects.L2Player spoiler = dgResolveSpoilerPlayer(lastAttacker);
-    if (spoiler == null)
-        continue; // ← ИСПРАВЛЕНО: используем continue вместо return
+					final com.l2jfree.gameserver.gameobjects.L2Player spoiler = dgResolveSpoilerPlayer(lastAttacker);
+					if (spoiler == null)
+						continue;
 
-    final ArrayBunch<RewardItem> sweepList = new ArrayBunch<RewardItem>();
-
-    for (L2DropData drop : cat.getAllDrops())
-    {
-        // Эффективный шанс конкретного spoil-предмета
-        final long pScaled  = calculateDropChance(drop.getChance(), drop, /*isSweep=*/true, levelModifier);
-        final long pClamped = Math.min(Math.max(pScaled, 0L), L2DropData.MAX_CHANCE);
-
-        // Гарантия для SPOIL по ЭТОМУ предмету (категория у sweep обычно -1 — это ОК)
-        boolean guaranteed = false;
-        try {
-            final double p = pClamped / (double)L2DropData.MAX_CHANCE; // 0..1
-            final long deltaPpm = Math.round(p * com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO.ONE_PPM_UNIT);
-
-            guaranteed = com.l2jfree.gameserver.dropguarantee.DropGuaranteeLogic.addAndCheckGuaranteed(
-                    spoiler.getObjectId(),
-                    drop.getItemId(),
-                    cat.getCategoryType(), // чаще всего -1
-                    com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO.Source.SPOIL,
-                    deltaPpm
-            );
-        } catch (Exception e) {
-            _log.warn("DropGuarantee(SPOIL) add/check failed", e);
-        }
-
-        // Решение: гарант ИЛИ обычный ролл предмета
-        final boolean rollOk = com.l2jfree.tools.random.Rnd.get(L2DropData.MAX_CHANCE) < pClamped;
-        if (!(guaranteed || rollOk))
-            continue;
-
-        // Выдаём и ОБНУЛЯЕМ счётчик
-        final RewardItem item2 = dropItem(Math.max(pScaled, L2DropData.MAX_CHANCE), drop);
-        if (item2 != null) {
-            sweepList.add(item2); // ← ИСПРАВЛЕНО: используем item2
-            try {
-                com.l2jfree.gameserver.dropguarantee.DropGuaranteeLogic.resetAfterAward(
-                        spoiler.getObjectId(),
-                        drop.getItemId(),
-                        com.l2jfree.gameserver.dropguarantee.DropGuaranteeDAO.Source.SPOIL
-                );
-            } catch (Exception e) {
-                _log.warn("DropGuarantee(SPOIL) reset failed", e);
-            }
-        }
-    }
-
-    if (!sweepList.isEmpty())
-        _sweepItems = sweepList.moveToArray(new RewardItem[sweepList.size()]);
-
-    continue; // sweep обработан, переходим к следующей категории
-}
+					// НОВАЯ СИСТЕМА ГРУППОВОЙ ГАРАНТИИ ДЛЯ СПОЙЛА
+					final int catType = cat.getCategoryType();
+					final DropGuaranteeDAO.Source source = DropGuaranteeDAO.Source.SPOIL;
+					
+					try {
+						// Создаем калькулятор шансов для спойла
+						DropGuaranteeGroupLogic.ChanceCalculator calculator = (drop) -> 
+							calculateDropChance(drop.getChance(), drop, true, levelModifier);
+						
+						// Группируем предметы по расчетным категориям вероятности
+						java.util.Map<Integer, java.util.List<DropGuaranteeGroupLogic.ItemWithChance>> groups = 
+							DropGuaranteeGroupLogic.groupItemsByPityCategory(cat, calculator);
+						
+						final ArrayBunch<RewardItem> sweepList = new ArrayBunch<RewardItem>();
+						
+						// Обрабатываем каждую группу спойла
+						for (java.util.Map.Entry<Integer, java.util.List<DropGuaranteeGroupLogic.ItemWithChance>> entry : groups.entrySet()) {
+							int pityCategory = entry.getKey();
+							java.util.List<DropGuaranteeGroupLogic.ItemWithChance> groupItems = entry.getValue();
+							
+							// Проверяем, нужна ли гарантия для этой группы
+							if (pityCategory >= DropGuaranteeGroupLogic.CALCULATED_CATEGORY_BASE + 999) {
+								// Группа с высоким шансом - используем обычную логику без гарантии
+								L2DropData highChanceResult = DropGuaranteeGroupLogic.processHighChanceItems(groupItems);
+								if (highChanceResult != null) {
+									final long itemChanceScaled = calculateDropChance(highChanceResult.getChance(), highChanceResult, true, levelModifier);
+									final RewardItem spoilItem = dropItem(Math.max(itemChanceScaled, L2DropData.MAX_CHANCE), highChanceResult);
+									if (spoilItem != null) {
+										sweepList.add(spoilItem);
+									}
+								}
+							} else {
+								// Группа с низким шансом - используем гарантийную логику
+								DropGuaranteeGroupLogic.GroupResult groupResult = 
+									DropGuaranteeGroupLogic.processLowChanceGroup(spoiler.getObjectId(), getNpcId(), catType, pityCategory, source, groupItems);
+								
+								if (groupResult.groupTriggered && groupResult.guaranteedItem != null) {
+									// Групповая гарантия сработала - выдаем гарантированный предмет
+									final RewardItem spoilItem = dropItem(DropGuaranteeDAO.ONE_PPM_UNIT, groupResult.guaranteedItem);
+									if (spoilItem != null) {
+										sweepList.add(spoilItem);
+									}
+								}
+							}
+						}
+						
+						if (!sweepList.isEmpty())
+							_sweepItems = sweepList.moveToArray(new RewardItem[sweepList.size()]);
+						
+					} catch (Exception e) {
+						_log.warn("DropGuarantee(SPOIL) group processing failed, falling back to individual processing", e);
+						
+						// Fallback к обработке отдельных предметов при ошибке
+						final ArrayBunch<RewardItem> sweepList = new ArrayBunch<RewardItem>();
+						for (L2DropData drop : cat.getAllDrops()) {
+							item = calculateRewardItem(spoiler, drop, levelModifier, true);
+							if (item != null) {
+								sweepList.add(item);
+							}
+						}
+						if (!sweepList.isEmpty())
+							_sweepItems = sweepList.moveToArray(new RewardItem[sweepList.size()]);
+					}
+				}
 				else
 				{
 					if (isSeeded())
