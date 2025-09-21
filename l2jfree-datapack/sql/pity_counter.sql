@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS `pity_group_progress` (
   `char_id`       INT UNSIGNED      NOT NULL COMMENT 'Идентификатор персонажа',
   `npc_id`        INT               NOT NULL COMMENT 'ID моба (отдельная группа на каждого моба)',
-  `l2_category`   TINYINT           NOT NULL COMMENT 'Исходная L2 категория (1,2,3)',
+  `l2_category`   SMALLINT           NOT NULL COMMENT 'Исходная L2 категория (1,2,3)',
   `pity_category` SMALLINT          NOT NULL COMMENT 'Расчетная категория по интервалам вероятности (1001, 1002, 1003...)',
   `source`        ENUM('DROP','SPOIL') NOT NULL COMMENT 'Источник дропа: обычный или спойл',
   `group_sum_ppm` BIGINT UNSIGNED   NOT NULL DEFAULT 0 COMMENT 'Накопленная сумма шансов группы в PPM',
