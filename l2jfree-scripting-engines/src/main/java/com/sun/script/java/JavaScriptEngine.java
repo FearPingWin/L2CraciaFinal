@@ -46,6 +46,8 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineFactory;
 import javax.script.ScriptException;
 import javax.script.SimpleBindings;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 /**
  * This is script engine for Java programming language.
@@ -54,6 +56,7 @@ public class JavaScriptEngine extends AbstractScriptEngine implements Compilable
 {
 	// Java compiler
 	private JavaCompiler compiler;
+	private static final Log _log = LogFactory.getLog(JavaScriptEngine.class);
 	
 	public JavaScriptEngine()
 	{
@@ -142,7 +145,17 @@ public class JavaScriptEngine extends AbstractScriptEngine implements Compilable
 		String fileName = getFileName(ctx);
 		String sourcePath = getSourcePath(ctx);
 		String classPath = getClassPath(ctx);
-		
+
+		// Debug: log the filename/sourcepath/classpath used for compilation
+		try
+		{
+			if (_log.isDebugEnabled()) _log.debug("[JS-DBG] compile: fileName='" + fileName + "' sourcePath='" + sourcePath + "' classPath='" + classPath + "'");
+		}
+		catch (Throwable t)
+		{
+			// ignore logging failures
+		}
+
 		final StringWriter err = new StringWriter();
 		
 		Map<String, byte[]> classBytes = compiler.compile(fileName, str, err, sourcePath, classPath);
@@ -228,6 +241,7 @@ public class JavaScriptEngine extends AbstractScriptEngine implements Compilable
 			}
 		}
 		// no main class found!
+		// no main class found!
 		return null;
 	}
 	
@@ -308,13 +322,19 @@ public class JavaScriptEngine extends AbstractScriptEngine implements Compilable
 		int scope = ctx.getAttributesScope(SOURCEPATH);
 		if (scope != -1)
 		{
-			return ctx.getAttribute(SOURCEPATH).toString();
+			Object attr = ctx.getAttribute(SOURCEPATH, scope);
+			if (attr != null)
+			{
+				return attr.toString();
+			}
 		}
-		else
+		// look for "com.sun.script.java.sourcepath"
+		String sp = System.getProperty(SYSPROP_PREFIX + SOURCEPATH);
+		if (sp != null && sp.length() > 0)
 		{
-			// look for "com.sun.script.java.sourcepath"
-			return System.getProperty(SYSPROP_PREFIX + SOURCEPATH);
+			return sp;
 		}
+		return null;
 	}
 	
 	private static final String CLASSPATH = "classpath";
@@ -324,18 +344,23 @@ public class JavaScriptEngine extends AbstractScriptEngine implements Compilable
 		int scope = ctx.getAttributesScope(CLASSPATH);
 		if (scope != -1)
 		{
-			return ctx.getAttribute(CLASSPATH).toString();
-		}
-		else
-		{
-			// look for "com.sun.script.java.classpath"
-			String res = System.getProperty(SYSPROP_PREFIX + CLASSPATH);
-			if (res == null)
+			Object attr = ctx.getAttribute(CLASSPATH, scope);
+			if (attr != null)
 			{
-				res = System.getProperty("java.class.path");
+				return attr.toString();
 			}
+		}
+		// look for "com.sun.script.java.classpath"
+		String res = System.getProperty(SYSPROP_PREFIX + CLASSPATH);
+		if (res == null || res.length() == 0)
+		{
+			res = System.getProperty("java.class.path");
+		}
+		if (res != null && res.length() > 0)
+		{
 			return res;
 		}
+		return null;
 	}
 	
 	private static final String MAINCLASS = "mainClass";

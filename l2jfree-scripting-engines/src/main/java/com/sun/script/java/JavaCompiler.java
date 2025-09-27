@@ -40,13 +40,16 @@ import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import org.eclipse.jdt.internal.compiler.tool.EclipseCompiler;
 
 /**
  * Simple interface to Java compiler using JSR 199 Compiler API.
  */
-public class JavaCompiler
-{
+public class JavaCompiler {
+	private static final Log _log = LogFactory.getLog(JavaCompiler.class);
 	private javax.tools.JavaCompiler tool;
 	
 	public JavaCompiler()
@@ -89,14 +92,76 @@ public class JavaCompiler
 		
 		// prepare the compilation unit
 		List<JavaFileObject> compUnits = new ArrayList<JavaFileObject>(1);
-		compUnits.add(MemoryJavaFileManager.makeStringSource(fileName, source));
+
+		// Debug: log incoming compile parameters
+		try
+		{
+			_log.debug("[JC-DBG] compile() fileName='" + fileName + "' sourcePath='" + sourcePath + "' classPath='" + classPath + "'");
+		}
+		catch (Throwable t)
+		{
+		}
+		// Normalize fileName so that if an absolute path under sourcePath
+		// is provided, we pass a relative path to the file manager. This
+		// helps the file manager construct a correct URI on Windows and
+		// makes the Eclipse compiler locate the file in the sourcePath.
+		String unitName = fileName;
+		try
+		{
+			if (unitName != null && sourcePath != null)
+			{
+				String normFile = unitName.replace('\\', '/');
+				String normSource = sourcePath.replace('\\', '/');
+				if (normFile.startsWith(normSource))
+				{
+					// strip leading sourcePath and any leading slash
+					unitName = normFile.substring(normSource.length());
+					if (unitName.length() > 0 && (unitName.charAt(0) == '/' || unitName.charAt(0) == '\\'))
+					{
+						unitName = unitName.substring(1);
+					}
+					// use forward slashes for consistency
+					unitName = unitName.replace('/', '.');
+					// ensure .java extension
+					if (!unitName.endsWith(".java"))
+					{
+						int idx = unitName.lastIndexOf('.');
+						if (idx != -1)
+						{
+							unitName = unitName.substring(0, idx) + ".java";
+						}
+						else
+						{
+							unitName = unitName + ".java";
+						}
+					}
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			// fall back to original fileName on any failure
+			unitName = fileName;
+		}
+
+		if (sourcePath != null)
+		{
+			compUnits.add(MemoryJavaFileManager.makeStringSource(unitName, source, sourcePath));
+		}
+		else
+		{
+			compUnits.add(MemoryJavaFileManager.makeStringSource(unitName, source));
+		}
 		
 		// javac options
 		List<String> options = new ArrayList<String>();
 		options.add("-Xlint:all");
 		options.add("-g");
 		options.add("-deprecation");
-		options.add("-1.8");
+		options.add("-source");
+		options.add("21");
+		options.add("-target");
+		options.add("21");
 		if (sourcePath != null)
 		{
 			options.add("-sourcepath");

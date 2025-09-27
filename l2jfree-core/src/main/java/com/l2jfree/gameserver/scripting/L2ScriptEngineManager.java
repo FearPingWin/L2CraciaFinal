@@ -62,6 +62,18 @@ public final class L2ScriptEngineManager
 	static
 	{
 		SCRIPT_FOLDER = new File(Config.DATAPACK_ROOT.getAbsolutePath(), "data/scripts");
+
+		// Ensure scripting subsystem has sensible defaults for sourcepath/classpath
+		// so engines that use the default ScriptContext can still locate files.
+		try
+		{
+			System.setProperty("com.sun.script.java.sourcepath", SCRIPT_FOLDER.getAbsolutePath());
+			System.setProperty("com.sun.script.java.classpath", SCRIPT_FOLDER.getAbsolutePath());
+		}
+		catch (Throwable t)
+		{
+			// ignore any security exceptions when setting system properties
+		}
 	}
 	
 	public static L2ScriptEngineManager getInstance()
@@ -396,14 +408,28 @@ public final class L2ScriptEngineManager
 		if (engine instanceof Compilable && ATTEMPT_COMPILATION)
 		{
 			ScriptContext context = new SimpleScriptContext();
-			context.setAttribute("mainClass", getClassForFile(file).replace('/', '.').replace('\\', '.'),
-					ScriptContext.ENGINE_SCOPE);
-			context.setAttribute(ScriptEngine.FILENAME, file.getName(), ScriptContext.ENGINE_SCOPE);
-			context.setAttribute("classpath", SCRIPT_FOLDER.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
-			context.setAttribute("sourcepath", SCRIPT_FOLDER.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
-			context.setAttribute("parentLoader", ClassLoader.getSystemClassLoader(), ScriptContext.ENGINE_SCOPE);
-			
-			setCurrentLoadingScript(file);
+		context.setAttribute("mainClass", getClassForFile(file).replace('/', '.').replace('\\', '.'),
+				ScriptContext.ENGINE_SCOPE);
+		// Prefer a path relative to SCRIPT_FOLDER so the compiler's sourcePath lookup can find the file
+		String fname = file.getAbsolutePath();
+		try
+		{
+			String scp = SCRIPT_FOLDER.getAbsolutePath();
+			if (fname.startsWith(scp))
+			{
+				fname = fname.substring(scp.length());
+				if (fname.length() > 0 && (fname.charAt(0) == '\\' || fname.charAt(0) == '/'))
+					fname = fname.substring(1);
+			}
+		}
+		catch (Throwable t)
+		{
+			// fallback to absolute path
+		}
+		context.setAttribute(ScriptEngine.FILENAME, fname, ScriptContext.ENGINE_SCOPE);
+		context.setAttribute("classpath", SCRIPT_FOLDER.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
+		context.setAttribute("sourcepath", SCRIPT_FOLDER.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
+		context.setAttribute("parentLoader", ClassLoader.getSystemClassLoader(), ScriptContext.ENGINE_SCOPE);			setCurrentLoadingScript(file);
 			ScriptContext ctx = engine.getContext();
 			try
 			{
@@ -434,7 +460,7 @@ public final class L2ScriptEngineManager
 			ScriptContext context = new SimpleScriptContext();
 			context.setAttribute("mainClass", getClassForFile(file).replace('/', '.').replace('\\', '.'),
 					ScriptContext.ENGINE_SCOPE);
-			context.setAttribute(ScriptEngine.FILENAME, file.getName(), ScriptContext.ENGINE_SCOPE);
+			context.setAttribute(ScriptEngine.FILENAME, file.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
 			context.setAttribute("classpath", SCRIPT_FOLDER.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
 			context.setAttribute("sourcepath", SCRIPT_FOLDER.getAbsolutePath(), ScriptContext.ENGINE_SCOPE);
 			context.setAttribute("parentLoader", ClassLoader.getSystemClassLoader(), ScriptContext.ENGINE_SCOPE);

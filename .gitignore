@@ -1,2 +1,3 @@
 *.code-workspace
 *.prefs
+/server_runtime/

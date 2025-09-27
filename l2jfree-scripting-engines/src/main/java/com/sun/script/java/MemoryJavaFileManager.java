@@ -48,6 +48,8 @@ import javax.tools.JavaFileObject.Kind;
 import javax.tools.SimpleJavaFileObject;
 
 import org.eclipse.jdt.internal.compiler.tool.EclipseFileManager;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 /**
  * JavaFileManager that keeps compiled .class bytes in memory.
@@ -57,6 +59,7 @@ public final class MemoryJavaFileManager extends EclipseFileManager
 	/** Java source file extension. */
 	private final static String EXT = ".java";
 	private Map<String, byte[]> classBytes;
+	private static final Log _log = LogFactory.getLog(MemoryJavaFileManager.class);
 	
 	public MemoryJavaFileManager()
 	{
@@ -86,19 +89,25 @@ public final class MemoryJavaFileManager extends EclipseFileManager
 	private static class StringInputBuffer extends SimpleJavaFileObject
 	{
 		final String code;
-		
+        
 		StringInputBuffer(String name, String code)
 		{
 			super(toURI(name), Kind.SOURCE);
 			this.code = code;
 		}
-		
+
+		StringInputBuffer(String name, String code, String sourcePath)
+		{
+			super(toURI(name, sourcePath), Kind.SOURCE);
+			this.code = code;
+		}
+        
 		@Override
 		public CharBuffer getCharContent(boolean ignoreEncodingErrors)
 		{
 			return CharBuffer.wrap(code);
 		}
-		
+        
 		public Reader openReader()
 		{
 			return new StringReader(code);
@@ -146,34 +155,93 @@ public final class MemoryJavaFileManager extends EclipseFileManager
 			return super.getJavaFileForOutput(location, className, kind, sibling);
 		}
 	}
-	
+
+	/**
+	 * Helper to create a JavaFileObject from a string source and optional sourcePath.
+	 */
 	static JavaFileObject makeStringSource(String name, String code)
 	{
 		return new StringInputBuffer(name, code);
 	}
-	
+
+	static JavaFileObject makeStringSource(String name, String code, String sourcePath)
+	{
+		return new StringInputBuffer(name, code, sourcePath);
+	}
+
 	static URI toURI(String name)
 	{
-		File file = new File(name);
-		if (file.exists())
+		return toURI(name, null);
+	}
+
+	static URI toURI(String name, String sourcePath)
+	{
+		// Try the name as provided first
+		try
 		{
-			return file.toURI();
+			if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: name='" + name + "' sourcePath='" + sourcePath + "'");
+			File file = new File(name);
+			if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: File(name).exists=" + file.exists() + " -> " + file.getAbsolutePath());
+			if (file.exists())
+			{
+				if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: using File(name)");
+				return file.toURI();
+			}
+
+			// Normalize leading slash on Windows (e.g. "/MC_Show.java")
+			String normalized = name;
+			if (normalized.length() > 0 && (normalized.charAt(0) == '/' || normalized.charAt(0) == '\\'))
+			{
+				normalized = normalized.substring(1);
+			}
+
+			// Convert forward slashes to platform separators
+			normalized = normalized.replace('/', File.separatorChar).replace('\\', File.separatorChar);
+
+			// Try normalized relative path
+			File nf = new File(normalized);
+			if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: normalized='" + normalized + "' -> exists=" + nf.exists() + " -> " + nf.getAbsolutePath());
+			if (nf.exists())
+			{
+				if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: using normalized path");
+				return nf.toURI();
+			}
+
+			// If a sourcePath is provided, try searching there
+			if (sourcePath != null)
+			{
+				File sf = new File(sourcePath, normalized);
+				if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: source trial 1='" + sf.getAbsolutePath() + "' exists=" + sf.exists());
+				if (sf.exists())
+				{
+					if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: using sourcePath/normalized");
+					return sf.toURI();
+				}
+
+				// Also try with just the base name in the sourcePath
+				File base = new File(normalized).getName().length() > 0 ? new File(sourcePath, new File(normalized).getName()) : null;
+				if (base != null)
+				{
+					if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: source trial 2='" + base.getAbsolutePath() + "' exists=" + base.exists());
+					if (base.exists())
+					{
+						if (_log.isDebugEnabled()) _log.debug("[MJF-DBG] toURI: using sourcePath/baseName");
+						return base.toURI();
+					}
+				}
+			}
+
+			// Fallback to original behavior: create a file:/// URI using package style
+			final StringBuilder newUri = new StringBuilder();
+			newUri.append("file:///");
+			newUri.append(name.replace('.', '/'));
+			if (name.endsWith(EXT))
+				newUri.replace(newUri.length() - EXT.length(), newUri.length(), EXT);
+			return URI.create(newUri.toString());
 		}
-		else
+		catch (Exception exp)
 		{
-			try
-			{
-				final StringBuilder newUri = new StringBuilder();
-				newUri.append("file:///");
-				newUri.append(name.replace('.', '/'));
-				if (name.endsWith(EXT))
-					newUri.replace(newUri.length() - EXT.length(), newUri.length(), EXT);
-				return URI.create(newUri.toString());
-			}
-			catch (Exception exp)
-			{
-				return URI.create("file:///com/sun/script/java/java_source");
-			}
+			return URI.create("file:///com/sun/script/java/java_source");
 		}
 	}
 }
