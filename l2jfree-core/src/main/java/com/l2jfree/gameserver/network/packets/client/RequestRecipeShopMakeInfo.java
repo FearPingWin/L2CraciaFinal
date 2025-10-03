@@ -14,12 +14,22 @@
  */
 package com.l2jfree.gameserver.network.packets.client;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
 import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.model.world.L2World;
 import com.l2jfree.gameserver.network.SystemMessageId;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 import com.l2jfree.gameserver.network.packets.server.RecipeShopItemInfo;
+import com.l2jfree.L2DatabaseFactory;
+import com.l2jfree.gameserver.datatables.RecipeTable;
+import com.l2jfree.gameserver.gameobjects.instance.L2NpcInstance;
+import com.l2jfree.gameserver.model.items.recipe.L2RecipeList;
+import com.l2jfree.gameserver.gameobjects.L2Npc;
+
 
 /**
  * This class ...
@@ -40,34 +50,58 @@ public class RequestRecipeShopMakeInfo extends L2ClientPacket
 		_recipeId = readD();
 	}
 	
-	@Override
-	protected void runImpl()
-	{
-		L2Player activeChar = getClient().getActiveChar();
-		if (activeChar == null)
-			return;
-		
-		L2Object obj = null;
-		
-		// Get object from target
-		if (activeChar.getTargetId() == _objectId)
-			obj = activeChar.getTarget();
-		
-		// Get object from world
-		if (obj == null)
-			obj = L2World.getInstance().getPlayer(_objectId);
-		
-		if (!(obj instanceof L2Player))
-		{
-			requestFailed(SystemMessageId.TARGET_IS_INCORRECT);
-			return;
-		}
-		
-		sendPacket(new RecipeShopItemInfo((L2Player)obj, _recipeId));
-		
-		sendAF();
-	}
-	
+@Override
+protected void runImpl()
+{
+    L2Player activeChar = getClient().getActiveChar();
+    if (activeChar == null)
+        return;
+
+    L2Object obj = null;
+
+    if (activeChar.getTargetId() == _objectId)
+        obj = activeChar.getTarget();
+
+    if (obj == null) {
+        obj = L2World.getInstance().getPlayer(_objectId);
+        if (obj == null)
+            obj = L2World.getInstance().findObject(_objectId); // ← важное отличие
+    }
+
+    if (obj == null) {
+        requestFailed(SystemMessageId.TARGET_IS_INCORRECT);
+        return;
+    }
+
+    // СТАРЫЙ ПУТЬ: производитель — игрок
+    if (obj instanceof L2Player) {
+        sendPacket(new RecipeShopItemInfo((L2Player)obj, _recipeId));
+        sendAF();
+        return;
+    }
+
+    // НОВЫЙ ПУТЬ: производитель — наш НПЦ (id=999)
+if (obj instanceof L2Npc) {
+    L2Npc npc = (L2Npc)obj;
+    if (npc.getNpcId() != 999) { sendAF(); return; }
+        long price = 0L; // если записи нет — 0
+        try (java.sql.Connection con = com.l2jfree.L2DatabaseFactory.getInstance().getConnection();
+             java.sql.PreparedStatement ps = con.prepareStatement(
+                 "SELECT fee_amount FROM npc_crafter_recipes WHERE npc_id=? AND recipe_id=? AND is_learned=1 AND enabled=1")) {
+            ps.setInt(1, npc.getNpcId());
+            ps.setInt(2, _recipeId);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) price = rs.getLong(1);
+            }
+        } catch (Exception ignored) {}
+
+		sendPacket(new RecipeShopItemInfo(_objectId, _recipeId, 0, 0, (int)price));
+        sendAF();
+        return;
+    }
+    sendAF();
+    return;
+}
 	@Override
 	public String getType()
 	{

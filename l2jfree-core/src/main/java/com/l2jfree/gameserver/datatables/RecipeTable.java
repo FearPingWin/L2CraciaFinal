@@ -16,6 +16,7 @@ package com.l2jfree.gameserver.datatables;
 
 import java.io.File;
 import java.io.IOException;
+import java.sql.ResultSet;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -34,9 +35,13 @@ import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.xml.sax.SAXException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 
 import com.l2jfree.Config;
+import com.l2jfree.L2DatabaseFactory;
 import com.l2jfree.gameserver.ThreadPoolManager;
+import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.instancemanager.GameTimeManager;
@@ -185,6 +190,104 @@ public class RecipeTable
 		}
 	}
 	
+public synchronized boolean requestManufactureItemNpc(L2Npc npc, int recipeListId, L2Player player)
+{
+	if (npc == null || player == null)
+		return false;
+
+	// 1) Рецепт существует?
+	final L2RecipeList recipe = getRecipeList(recipeListId);
+	if (recipe == null) {
+		player.sendPacket(SystemMessageId.TARGET_IS_INCORRECT);
+		return false;
+	}
+
+	// 2) НПЦ "знает" рецепт и он включён? заодно читаем цену
+	int feeCur = 57;
+	long feeAmt = 0L;
+	try (Connection con = L2DatabaseFactory.getInstance().getConnection();
+	     PreparedStatement ps = con.prepareStatement(
+			"SELECT fee_currency, fee_amount FROM npc_crafter_recipes " +
+			"WHERE npc_id=? AND recipe_id=? AND is_learned=1 AND enabled=1"))
+	{
+		ps.setInt(1, npc.getNpcId());
+		ps.setInt(2, recipeListId);
+		try (ResultSet rs = ps.executeQuery()) {
+			if (!rs.next()) {
+				player.sendPacket(SystemMessageId.TARGET_IS_INCORRECT);
+				return false;
+			}
+			feeCur = rs.getInt(1);
+			feeAmt = rs.getLong(2);
+		}
+	}
+	catch (Exception e) {
+		player.sendPacket(SystemMessageId.TARGET_IS_INCORRECT);
+		return false;
+	}
+
+	// 3) Проверка оплаты
+	if (feeAmt > 0) {
+		if (feeCur != 57) {
+			player.sendMessage("Only Adena fee is supported.");
+			return false;
+		}
+		long haveAdena = player.getInventory().getInventoryItemCount(57, -1);
+		if (haveAdena < feeAmt) {
+			player.sendPacket(SystemMessageId.NOT_ENOUGH_ADENA_FOR_THIS_BID);
+			return false;
+		}
+	}
+
+	// 4) Проверка материалов
+	final L2RecipeInstance[] ings = recipe.getRecipes();
+	if (ings != null) {
+		for (L2RecipeInstance ing : ings) {
+			if (ing == null) continue;
+			final int itemId = ing.getItemId();
+			final long qty   = ing.getQuantity(); // ct2.3
+			if (qty <= 0) continue;
+			long have = player.getInventory().getInventoryItemCount(itemId, -1);
+			if (have < qty) {
+				player.sendMessage("Not enough materials.");
+				return false;
+			}
+		}
+	}
+
+	// 5) Списание оплаты
+	if (feeAmt > 0)
+		player.destroyItemByItemId("NpcCraftFee", feeCur, feeAmt, npc, true);
+
+	// 6) Списание материалов
+	if (ings != null) {
+		for (L2RecipeInstance ing : ings) {
+			if (ing == null) continue;
+			final int itemId = ing.getItemId();
+			final long qty   = ing.getQuantity();
+			if (qty > 0)
+				player.destroyItemByItemId("NpcCraft", itemId, qty, npc, true);
+		}
+	}
+
+	// 7) Шанс и выдача результата
+	final int chance = recipe.getSuccessRate();
+	final boolean success = chance >= 100 || Rnd.get(100) < chance;
+
+	if (success) {
+		final int productId = recipe.getItemId();
+		int productCnt = 1;
+		try { productCnt = recipe.getCount(); } catch (Throwable ignored) {}
+		player.addItem("NpcCraft", productId, productCnt, npc, true);
+		player.sendMessage("Craft success.");
+		return true;
+	} else {
+		player.sendMessage("Craft failed.");
+		return false;
+	}
+}
+
+
 	public synchronized void requestMakeItem(L2Player player, int recipeListId)
 	{
 		if (player.isInDuel())

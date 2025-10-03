@@ -24,29 +24,66 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 public class RecipeShopItemInfo extends L2ServerPacket
 {
 	private static final String _S__DA_RecipeShopItemInfo = "[S] da RecipeShopItemInfo";
+
+	// режим игрока (старый) или НПЦ (новый)
+	private final boolean _npcMode;
+
+	// данные для режима игрока
 	private final L2Player _crafter;
+
+	// общие поля
+	private final int _manufacturerObjId;
 	private final int _recipeId;
-	
+	private final int _curMp;
+	private final int _maxMp;
+	private final int _price; // int по протоколу (последнее writeD)
+
+	/** Старый конструктор: производитель — игрок, цена = 0xFFFFFFFF */
 	public RecipeShopItemInfo(L2Player crafter, int recipeId)
 	{
+		_npcMode = false;
 		_crafter = crafter;
+		_manufacturerObjId = crafter.getObjectId();
 		_recipeId = recipeId;
+		_curMp = (int)crafter.getStatus().getCurrentMp();
+		_maxMp = crafter.getMaxMp();
+		_price = 0xFFFFFFFF; // как было раньше
 	}
-	
+
+	/** Новый конструктор: производитель — НПЦ (или кастом), MP задаются явно, цена — из БД */
+	public RecipeShopItemInfo(int manufacturerObjId, int recipeId, int currentMp, int maxMp, int price)
+	{
+		_npcMode = true;
+		_crafter = null;
+		_manufacturerObjId = manufacturerObjId;
+		_recipeId = recipeId;
+		_curMp = currentMp;
+		_maxMp = maxMp;
+		_price = price;
+	}
+
 	@Override
 	protected final void writeImpl()
 	{
 		writeC(0xe0);
-		writeD(_crafter.getObjectId());
-		writeD(_recipeId);
-		writeD((int)_crafter.getStatus().getCurrentMp());
-		writeD(_crafter.getMaxMp());
-		writeD(0xffffffff);
+		if (_npcMode)
+		{
+			writeD(_manufacturerObjId);
+			writeD(_recipeId);
+			writeD(_curMp);
+			writeD(_maxMp);
+			writeD(_price);
+		}
+		else
+		{
+			writeD(_manufacturerObjId);
+			writeD(_recipeId);
+			writeD(_curMp);
+			writeD(_maxMp);
+			writeD(_price); // = 0xFFFFFFFF
+		}
 	}
-	
-	/* (non-Javadoc)
-	 * @see com.l2jfree.gameserver.serverpackets.ServerBasePacket#getType()
-	 */
+
 	@Override
 	public String getType()
 	{

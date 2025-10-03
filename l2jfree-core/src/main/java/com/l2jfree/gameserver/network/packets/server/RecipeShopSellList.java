@@ -14,6 +14,7 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import java.util.List;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.model.items.manufacture.L2ManufactureItem;
 import com.l2jfree.gameserver.model.items.manufacture.L2ManufactureList;
@@ -28,39 +29,87 @@ public class RecipeShopSellList extends L2ServerPacket
 {
 	private static final String _S__D9_RecipeShopSellList = "[S] d9 RecipeShopSellList";
 	
-	private final L2Player _buyer, _manufacturer;
+	private final L2Player _buyer;
+	private final L2Player _manufacturer;
+	
+	private final boolean _npcMode;
+	private final int _manufacturerObjId;
+	private final L2ManufactureList _customList;
+	private final long _adena;
 	
 	public RecipeShopSellList(L2Player buyer, L2Player manufacturer)
 	{
 		_buyer = buyer;
 		_manufacturer = manufacturer;
+		_npcMode = false;
+		_manufacturerObjId = manufacturer.getObjectId();
+		_customList = null;
+		_adena = buyer != null ? buyer.getAdena() : 0L;
+	}
+	
+	/** NPC mode: buyer provided, manufacturer by objectId, custom list provided */
+	public RecipeShopSellList(L2Player buyer, int manufacturerObjId, L2ManufactureList list)
+	{
+		_buyer = buyer;
+		_manufacturer = null;
+		_npcMode = true;
+		_manufacturerObjId = manufacturerObjId;
+		_customList = list;
+		_adena = buyer != null ? buyer.getAdena() : 0L;
+	}
+	
+	/** NPC mode: buyer adena provided explicitly (useful if buyer object not passed) */
+	public RecipeShopSellList(int manufacturerObjId, long buyerAdena, L2ManufactureList list)
+	{
+		_buyer = null;
+		_manufacturer = null;
+		_npcMode = true;
+		_manufacturerObjId = manufacturerObjId;
+		_customList = list;
+		_adena = buyerAdena;
 	}
 	
 	@Override
 	protected final void writeImpl()
 	{
-		L2ManufactureList createList = _manufacturer.getCreateList();
-		
-		if (createList != null)
+		if (_npcMode)
 		{
-			//dddd d(ddd)
+			final List<L2ManufactureItem> list = _customList != null ? _customList.getList() : java.util.Collections.<L2ManufactureItem>emptyList();
+			
 			writeC(0xdf);
-			writeD(_manufacturer.getObjectId());
-			writeD((int)_manufacturer.getStatus().getCurrentMp()); //Creator's MP
-			writeD(_manufacturer.getMaxMp()); //Creator's MP
-			writeCompQ(_buyer.getAdena()); //Buyer Adena
+			writeD(_manufacturerObjId);
+			writeD(0); // MP
+			writeD(0); // Max MP
+			writeCompQ(_adena);
 			
-			int count = createList.size();
-			writeD(count);
-			L2ManufactureItem temp;
-			
-			for (int i = 0; i < count; i++)
+			writeD(list.size());
+			for (L2ManufactureItem mi : list)
 			{
-				temp = createList.getList().get(i);
-				writeD(temp.getRecipeId());
-				writeD(0x00); //unknown
-				writeCompQ(temp.getCost());
+				writeD(mi.getRecipeId());
+				writeD(0x00);
+				writeCompQ(mi.getCost());
 			}
+			return;
+		}
+		
+		L2ManufactureList createList = _manufacturer != null ? _manufacturer.getCreateList() : null;
+		if (createList == null)
+			return;
+		
+		writeC(0xdf);
+		writeD(_manufacturer.getObjectId());
+		writeD((int)_manufacturer.getStatus().getCurrentMp());
+		writeD(_manufacturer.getMaxMp());
+		writeCompQ(_buyer != null ? _buyer.getAdena() : 0L);
+		
+		int count = createList.size();
+		writeD(count);
+		for (int i = 0; i < count; i++)
+		{
+			L2ManufactureItem temp = createList.getList().get(i);
+			writeD(temp.getRecipeId());
+			writeD(0x00);
+			writeCompQ(temp.getCost());
 		}
 	}
 	

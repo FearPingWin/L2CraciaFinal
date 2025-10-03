@@ -36,4 +36,36 @@ INSERT INTO spawnlist (
   'Giran_Square', 1, 999, 82210, 148610, -3472, 0, 0, 0, 60, 0, 0
 );
 
+CREATE TABLE IF NOT EXISTS npc_crafter_recipes (
+  npc_id       INT          NOT NULL,
+  recipe_id    INT          NOT NULL,
+  is_learned   TINYINT(1)   NOT NULL DEFAULT 0,
+  learned_at   TIMESTAMP    NULL DEFAULT NULL,
+  fee_currency INT          NOT NULL DEFAULT 57,   -- адена по умолчанию
+  fee_amount   BIGINT       NOT NULL DEFAULT 0,    -- фиксированная цена за крафт
+  category     VARCHAR(20)  DEFAULT NULL,          -- например: shots, mats, armor_d, weapon_d, armor_c, weapon_c, ... s80, s84
+  enabled      TINYINT(1)   NOT NULL DEFAULT 1,    -- можно быстро выключить рецепт
+  notes        VARCHAR(255) DEFAULT NULL,
+  PRIMARY KEY (npc_id, recipe_id),
+  KEY idx_npc_cat (npc_id, category)
+) DEFAULT CHARSET=utf8;
+
+INSERT INTO npc_crafter_recipes
+(npc_id, recipe_id, is_learned, learned_at, fee_currency, fee_amount, category, enabled, notes) VALUES
+(999,480,0,NULL,57,0,'shots',1,NULL),
+(999,481,0,NULL,57,0,'shots',1,NULL),
+(999,482,0,NULL,57,0,'shots',1,NULL),
+(999,483,0,NULL,57,0,'shots',1,NULL),
+(999,484,0,NULL,57,0,'shots',1,NULL),
+(999,317,0,NULL,57,0,'shots',1,NULL),
+(999,318,0,NULL,57,0,'shots',1,NULL),
+(999,319,0,NULL,57,0,'shots',1,NULL),
+(999,320,0,NULL,57,0,'shots',1,NULL),
+(999,321,0,NULL,57,0,'shots',1,NULL),
+(999,323,0,NULL,57,0,'shots',1,NULL),
+(999,324,0,NULL,57,0,'shots',1,NULL),
+(999,325,0,NULL,57,0,'shots',1,NULL),
+(999,326,0,NULL,57,0,'shots',1,NULL),
+(999,327,0,NULL,57,0,'shots',1,NULL)
+ON DUPLICATE KEY UPDATE category='shots', enabled=1;
 COMMIT;

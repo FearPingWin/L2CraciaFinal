@@ -1,16 +1,25 @@
 package transformations;
 
+import java.sql.ResultSet;
 import java.util.*;
 
 import com.l2jfree.gameserver.model.quest.Quest;
 import com.l2jfree.gameserver.model.quest.QuestState;
 import com.l2jfree.gameserver.gameobjects.L2Object;
+import com.l2jfree.L2DatabaseFactory;
 import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
+import com.l2jfree.gameserver.model.items.recipe.L2RecipeList;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import com.l2jfree.gameserver.model.items.manufacture.L2ManufactureItem;
+import com.l2jfree.gameserver.model.items.manufacture.L2ManufactureList; 
+import com.l2jfree.gameserver.network.packets.server.RecipeShopSellList; 
 
 public class NpcMasterCrafter extends Quest
 {
+    private static final Map<Integer,String> ITEM_NAME_CACHE = new HashMap<Integer,String>();
     private static final int NPC_ID = 999;
 
     private static final int CRYSTAL_D = 1458;
@@ -70,6 +79,24 @@ public class NpcMasterCrafter extends Quest
             {
                 return confirmCrystallize(npc, player);
             }
+            if ("teach_open".equals(event))
+            {
+                return showTeachList(npc, player);
+            }
+            if (event.startsWith("teach_give "))
+            {
+                int objId = Integer.parseInt(event.substring("teach_give ".length()));
+                return confirmTeach(npc, player, objId);
+            }
+            if ("craft_menu".equals(event))
+            {
+                return showCraftCategories(npc, player);
+            }
+            if (event.startsWith("craft_cat "))
+            {
+                String cat = event.substring("craft_cat ".length());
+                return openPrivateCraft(npc, player, cat);
+            }
         }
         catch (Exception e)
         {
@@ -84,7 +111,11 @@ public class NpcMasterCrafter extends Quest
         StringBuilder sb = new StringBuilder(256);
         sb.append("<html><body><center>");
         sb.append("<font color=LEVEL>Crafter of Mammon</font><br1>");
-        sb.append("<button value=\"Crystallize items\" action=\"bypass -h Quest NpcMasterCrafter cryst_open\" width=220 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\">");
+        sb.append("<table width=260>");
+        sb.append("<tr><td align=center><button value=\"Crystallize items\" action=\"bypass -h Quest NpcMasterCrafter cryst_open\" width=240 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td></tr>");
+        sb.append("<tr><td align=center><button value=\"Teach a recipe\" action=\"bypass -h Quest NpcMasterCrafter teach_open\" width=240 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td></tr>");
+        sb.append("<tr><td align=center><button value=\"Craft items\" action=\"bypass -h Quest NpcMasterCrafter craft_menu\" width=240 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td></tr>");
+        sb.append("</table>");
         sb.append("</center></body></html>");
         return sb.toString();
     }
@@ -290,5 +321,230 @@ public class NpcMasterCrafter extends Quest
     private String cut(String s, int n) {
     if (s == null) return "";
     return s.length() <= n ? s : s.substring(0, n - 1) + "...";
+    }
+private String showTeachList(L2Npc npc, L2Player player)
+{
+    List<L2ItemInstance> recipeScrolls = new ArrayList<L2ItemInstance>();
+
+    for (L2ItemInstance it : player.getInventory().getItems())
+    {
+        if (it == null) continue;
+        if (it.isEquipped()) continue;
+
+        L2RecipeList r = com.l2jfree.gameserver.datatables.RecipeTable.getInstance().getRecipeByItemId(it.getItemId());
+        if (r == null) continue;
+
+        if (isRecipeLearned(NPC_ID, r.getId())) continue; // уже изучен у NPC
+        recipeScrolls.add(it);
+    }
+
+    // сортировка по нормальному названию рецепта
+Collections.sort(recipeScrolls, new Comparator<L2ItemInstance>() {
+    public int compare(L2ItemInstance a, L2ItemInstance b) {
+        return getItemDisplayName(a.getItemId()).compareToIgnoreCase(getItemDisplayName(b.getItemId()));
+    }
+});
+
+    StringBuilder sb = new StringBuilder(4096);
+    sb.append("<html><body><center>");
+    sb.append("<font color=LEVEL>Teach a recipe</font><br1>");
+    sb.append("Give me a recipe scroll to learn it.<br><br>");
+
+    if (recipeScrolls.isEmpty())
+    {
+        sb.append("No teachable recipes found in your inventory.<br>");
+    }
+    else
+    {
+        sb.append("<table width=280>");
+        for (L2ItemInstance it : recipeScrolls)
+        {
+            String nice = getItemDisplayName(it.getItemId());
+            sb.append("<td width=200>").append(cut(nice, 34)).append("</td>");
+            sb.append("<tr>");
+            sb.append("<td width=200>").append(cut(nice, 34)).append("</td>");
+            sb.append("<td width=80 align=center><a action=\"bypass -h Quest NpcMasterCrafter teach_give ")
+              .append(it.getObjectId()).append("\">give</a></td>");
+            sb.append("</tr>");
+        }
+        sb.append("</table>");
+    }
+
+    sb.append("<br><button value=\"Back\" action=\"bypass -h Quest NpcMasterCrafter _\" width=120 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\">");
+    sb.append("</center></body></html>");
+    return sb.toString();
 }
+private String confirmTeach(L2Npc npc, L2Player player, int recipeScrollObjId)
+{
+    L2ItemInstance scroll = player.getInventory().getItemByObjectId(recipeScrollObjId);
+    if (scroll == null) return sendMsg(player, "Recipe scroll not found.");
+
+    String nice = getItemDisplayName(scroll.getItemId()); // имя из etcitem/armor/weapon
+    L2RecipeList r = com.l2jfree.gameserver.datatables.RecipeTable.getInstance()
+            .getRecipeByItemId(scroll.getItemId());
+    if (r == null) return sendMsg(player, "This item is not a recipe scroll: " + nice + ".");
+    if (isRecipeLearned(NPC_ID, r.getId())) return sendMsg(player, "I already know this recipe: " + nice + ".");
+
+    if (!player.destroyItem("TeachRecipe", scroll.getObjectId(), 1, (L2Object)npc, true))
+        return sendMsg(player, "Failed to take the recipe scroll: " + nice + ".");
+
+    if (!saveLearnedRecipe(NPC_ID, r.getId()))
+        return sendMsg(player, "Database error while learning: " + nice + ".");
+
+    return sendMsg(player, "Learned: " + nice);
+}
+
+private boolean isRecipeLearned(int npcId, int recipeId)
+{
+    try (Connection con = L2DatabaseFactory.getInstance().getConnection();
+         PreparedStatement ps = con.prepareStatement(
+             "SELECT is_learned FROM npc_crafter_recipes WHERE npc_id=? AND recipe_id=?"))
+    {
+        ps.setInt(1, npcId);
+        ps.setInt(2, recipeId);
+        try (ResultSet rs = ps.executeQuery())
+        {
+            return rs.next() && rs.getInt(1) == 1;
+        }
+    }
+    catch (Exception e)
+    {
+        e.printStackTrace();
+        return false;
+    }
+}
+
+private boolean saveLearnedRecipe(int npcId, int recipeId)
+{
+    try (Connection con = L2DatabaseFactory.getInstance().getConnection();
+         PreparedStatement ps = con.prepareStatement(
+             "INSERT INTO npc_crafter_recipes (npc_id, recipe_id, is_learned, learned_at) " +
+             "VALUES (?, ?, 1, NOW()) " +
+             "ON DUPLICATE KEY UPDATE is_learned=1, learned_at=IFNULL(learned_at, NOW())"))
+    {
+        ps.setInt(1, npcId);
+        ps.setInt(2, recipeId);
+        return ps.executeUpdate() > 0;
+    }
+    catch (Exception e)
+    {
+        e.printStackTrace();
+        return false;
+    }
+}
+private String showCraftCategories(L2Npc npc, L2Player player)
+{
+    String[][] cats = new String[][]{
+        {"Soulshots", "shots"},
+        {"Resources", "mats"},
+        {"Armor D-grade", "armor_d"},
+        {"Weapons D-grade", "weapon_d"},
+        {"Armor C-grade", "armor_c"},
+        {"Weapons C-grade", "weapon_c"},
+        {"Armor B-grade", "armor_b"},
+        {"Weapons B-grade", "weapon_b"},
+        {"Armor A-grade", "armor_a"},
+        {"Weapons A-grade", "weapon_a"},
+        {"Armor S-grade", "armor_s"},
+        {"Weapons S-grade", "weapon_s"},
+        {"S80 / S84", "s80_s84"}
+    };
+
+    StringBuilder sb = new StringBuilder(2048);
+    sb.append("<html><body><center>");
+    sb.append("<font color=LEVEL>Craft items</font><br1>");
+    sb.append("<table width=300>");
+
+    for (int i=0; i<cats.length; i+=2)
+    {
+        sb.append("<tr>");
+        sb.append("<td width=150 align=center><button value=\"").append(cats[i][0])
+          .append("\" action=\"bypass -h Quest NpcMasterCrafter craft_cat ").append(cats[i][1])
+          .append("\" width=140 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td>");
+        if (i+1 < cats.length)
+        {
+            sb.append("<td width=150 align=center><button value=\"").append(cats[i+1][0])
+              .append("\" action=\"bypass -h Quest NpcMasterCrafter craft_cat ").append(cats[i+1][1])
+              .append("\" width=140 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td>");
+        }
+        else sb.append("<td></td>");
+        sb.append("</tr>");
+    }
+    sb.append("</table>");
+    sb.append("<br><button value=\"Back\" action=\"bypass -h Quest NpcMasterCrafter _\" width=120 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\">");
+    sb.append("</center></body></html>");
+    return sb.toString();
+}
+
+private String getItemDisplayName(int itemId)
+{
+    String cached = ITEM_NAME_CACHE.get(itemId);
+    if (cached != null) return cached;
+
+    String name = null;
+    final String sql =
+        "SELECT name FROM etcitem WHERE item_id=? " +
+        "UNION ALL SELECT name FROM armor WHERE item_id=? " +
+        "UNION ALL SELECT name FROM weapon WHERE item_id=? " +
+        "UNION ALL SELECT name FROM custom_armor WHERE item_id=? " +
+        "UNION ALL SELECT name FROM custom_weapon WHERE item_id=? " +
+        "LIMIT 1";
+
+    try (Connection con = L2DatabaseFactory.getInstance().getConnection();
+         PreparedStatement ps = con.prepareStatement(sql))
+    {
+        ps.setInt(1, itemId);
+        ps.setInt(2, itemId);
+        ps.setInt(3, itemId);
+        ps.setInt(4, itemId);
+        ps.setInt(5, itemId);
+        try (ResultSet rs = ps.executeQuery())
+        {
+            if (rs.next()) name = rs.getString(1);
+        }
+    }
+    catch (Exception e) { e.printStackTrace(); }
+
+    if (name == null) {
+        L2RecipeList r = com.l2jfree.gameserver.datatables.RecipeTable.getInstance().getRecipeByItemId(itemId);
+        if (r != null && r.getRecipeName() != null) name = r.getRecipeName();
+    }
+    if (name == null) name = "item:" + itemId;
+
+    ITEM_NAME_CACHE.put(itemId, name);
+    return name;
+}
+
+private String openPrivateCraft(L2Npc npc, L2Player player, String cat)
+{
+    L2ManufactureList list = new L2ManufactureList();
+    list.setStoreName("Crafter of Mammon");
+
+    try (Connection con = L2DatabaseFactory.getInstance().getConnection();
+         PreparedStatement ps = con.prepareStatement(
+             "SELECT recipe_id, fee_amount FROM npc_crafter_recipes " +
+             "WHERE npc_id=? AND category=? AND is_learned=1 AND enabled=1 AND fee_currency=57 " +
+             "ORDER BY recipe_id"))
+    {
+        ps.setInt(1, NPC_ID);
+        ps.setString(2, cat);
+        try (ResultSet rs = ps.executeQuery())
+        {
+            while (rs.next())
+            {
+                int recipeId = rs.getInt(1);
+                long priceL  = rs.getLong(2);
+                int price    = (priceL > Integer.MAX_VALUE) ? Integer.MAX_VALUE : (int)priceL;
+                list.add(new L2ManufactureItem(recipeId, price));
+            }
+        }
+    }
+    catch (Exception e) { e.printStackTrace(); return sendMsg(player, "DB error."); }
+
+    if (list.getList().isEmpty())
+        return sendMsg(player, "No learned recipes in this category.");
+    player.setTarget(npc);
+    player.sendPacket(new RecipeShopSellList(npc.getObjectId(), player.getAdena(), list));
+    return null;
+    }
 }
