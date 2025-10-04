@@ -66,6 +66,13 @@ INSERT INTO npc_crafter_recipes
 (999,324,0,NULL,57,0,'shots',1,NULL),
 (999,325,0,NULL,57,0,'shots',1,NULL),
 (999,326,0,NULL,57,0,'shots',1,NULL),
-(999,327,0,NULL,57,0,'shots',1,NULL)
+(999,327,0,NULL,57,0,'shots',1,NULL),
+(999,474,0,NULL,57,0,'mats',1,NULL), --maestro holder
+(999,31,0,NULL,57,0,'mats',1,NULL), -- coarsed bone powder
+(999,26,0,NULL,57,0,'mats',1,NULL), -- cord
+(999,41,0,NULL,57,0,'mats',1,NULL), -- crafted lether
+(999,38,0,NULL,57,0,'mats',1,NULL), -- mitril allay
+(999,30,0,NULL,57,0,'mats',1,NULL), -- steel
+(999,36,0,NULL,57,0,'mats',1,NULL) -- syntetic cookes
 ON DUPLICATE KEY UPDATE category='shots', enabled=1;
 COMMIT;

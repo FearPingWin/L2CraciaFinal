@@ -360,11 +360,10 @@ Collections.sort(recipeScrolls, new Comparator<L2ItemInstance>() {
         for (L2ItemInstance it : recipeScrolls)
         {
             String nice = getItemDisplayName(it.getItemId());
-            sb.append("<td width=200>").append(cut(nice, 34)).append("</td>");
             sb.append("<tr>");
             sb.append("<td width=200>").append(cut(nice, 34)).append("</td>");
             sb.append("<td width=80 align=center><a action=\"bypass -h Quest NpcMasterCrafter teach_give ")
-              .append(it.getObjectId()).append("\">give</a></td>");
+            .append(it.getObjectId()).append("\">give</a></td>");
             sb.append("</tr>");
         }
         sb.append("</table>");
