@@ -17,6 +17,8 @@ public final class NpcGameShop extends Quest {
     private static final int NPC_ID      = 998;
     private static final int LIST_QUEST  = 998001; // data/multisell/998001.xml
     private static final int LIST_ITEMS  = 998002; // data/multisell/998002.xml
+    private static final int LIST_ENCH   = 998003; // data/multisell/998003.xml
+    private static final int[] LISTS = { LIST_QUEST, LIST_ITEMS, LIST_ENCH };
 
     public NpcGameShop() {
         super(-1, "NpcGameShop", "transformations");
@@ -47,7 +49,7 @@ public final class NpcGameShop extends Quest {
             String cmd = st.hasMoreTokens() ? st.nextToken() : "";
 
             if ("open".equalsIgnoreCase(cmd)) {
-                int cat = st.hasMoreTokens() ? Integer.parseInt(st.nextToken()) : 0; // 0=quest, 1=items
+                int cat = st.hasMoreTokens() ? Integer.parseInt(st.nextToken()) : 0; // 0=quest, 1=items, 2=enchants
                 openMultiSell(npc, player, cat);
                 return null;
             }
@@ -59,12 +61,13 @@ public final class NpcGameShop extends Quest {
 
     // --- UI: simple category menu ---
     private String showMenu(L2Npc npc, L2Player player) {
-        StringBuilder sb = new StringBuilder(512);
+        StringBuilder sb = new StringBuilder(640);
         sb.append("<html><body><center>");
         sb.append("<font color=LEVEL>Game Shop</font><br1>");
         sb.append("<table width=300>");
         sb.append("<tr><td align=center><button value=\"Quest Items\" action=\"bypass -h Quest NpcGameShop open 0\" width=240 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td></tr>");
         sb.append("<tr><td align=center><button value=\"Items\" action=\"bypass -h Quest NpcGameShop open 1\" width=240 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td></tr>");
+        sb.append("<tr><td align=center><button value=\"Заточки (3 → 1 Blessed)\" action=\"bypass -h Quest NpcGameShop open 2\" width=240 height=24 back=\"L2UI_ct1.button_df\" fore=\"L2UI_ct1.button_df\"></td></tr>");
         sb.append("</table>");
         sb.append("</center></body></html>");
         NpcHtmlMessage html = new NpcHtmlMessage(npc.getObjectId());
@@ -75,11 +78,11 @@ public final class NpcGameShop extends Quest {
 
     // --- Logic: open native window for the chosen category ---
     private void openMultiSell(L2Npc npc, L2Player player, int cat) {
-        final int listId = (cat <= 0) ? LIST_QUEST : LIST_ITEMS;
+        final int listId = (cat >= 0 && cat < LISTS.length) ? LISTS[cat] : LIST_ITEMS;
         try {
             MultisellTable.getInstance().separateAndSend(listId, player, npc.getNpcId(), false, 0.0);
         } catch (Throwable t) {
-            player.sendMessage("Failed to open store. Check multisell lists 998001/998002.");
+            player.sendMessage("Failed to open store. Check multisell lists 998001/998002/998003.");
         }
     }
 

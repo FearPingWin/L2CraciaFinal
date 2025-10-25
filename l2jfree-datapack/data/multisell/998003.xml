@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<list id="998003" maintainEnchantment="false" applyTaxes="false">
+    <!-- WEAPON: normal -> blessed (3 -> 1) -->
+    <item> <ingredient id="955" count="3"/>  <production id="6575" count="1"/> </item> <!-- D: EWD -> Blessed EWD -->
+    <item> <ingredient id="951" count="3"/>  <production id="6573" count="1"/> </item> <!-- C: EWC -> Blessed EWC -->
+    <item> <ingredient id="947" count="3"/>  <production id="6571" count="1"/> </item> <!-- B: EWB -> Blessed EWB -->
+    <item> <ingredient id="729" count="3"/>  <production id="6569" count="1"/> </item> <!-- A: EWA -> Blessed EWA -->
+    <item> <ingredient id="959" count="3"/>  <production id="6577" count="1"/> </item> <!-- S: EWS -> Blessed EWS -->
+
+    <!-- ARMOR: normal -> blessed (3 -> 1) -->
+    <item> <ingredient id="956" count="3"/>  <production id="6576" count="1"/> </item> <!-- D: EAD -> Blessed EAD -->
+    <item> <ingredient id="952" count="3"/>  <production id="6574" count="1"/> </item> <!-- C: EAC -> Blessed EAC -->
+    <item> <ingredient id="948" count="3"/>  <production id="6572" count="1"/> </item> <!-- B: EAB -> Blessed EAB -->
+    <item> <ingredient id="730" count="3"/>  <production id="6570" count="1"/> </item> <!-- A: EAA -> Blessed EAA -->
+    <item> <ingredient id="960" count="3"/>  <production id="6578" count="1"/> </item> <!-- S: EAS -> Blessed EAS -->
+</list>

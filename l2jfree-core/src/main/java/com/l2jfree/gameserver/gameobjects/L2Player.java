@@ -10934,35 +10934,42 @@ private boolean tryConsumeHerb(int itemId, long count)
 		addExpAndSp(addToExp, addToSp, false);
 	}
 
-public void addExpAndSp(long addToExp, int addToSp, boolean useVitality)
-{
-    if (_expDisabled && addToExp > 0L) {
-        final L2Summon s = getPet();
-        if (s != null && !s.isDead() && s.getLevel() <= getLevel()) {
-            double vitMul = 1.0;
-            if (useVitality && Config.ENABLE_VITALITY) {
-                final int vp = getStat().getVitalityPoints();
-                if (vp > PlayerStat.VITALITY_LEVELS[0] && vp <= PlayerStat.VITALITY_LEVELS[1]) {
-                    vitMul = Config.RATE_VITALITY_LEVEL_1;
-                } else if (vp <= PlayerStat.VITALITY_LEVELS[2]) {
-                    vitMul = Config.RATE_VITALITY_LEVEL_2;
-                } else if (vp <= PlayerStat.VITALITY_LEVELS[3]) {
-                    vitMul = Config.RATE_VITALITY_LEVEL_3;
-                } else if (vp <= PlayerStat.VITALITY_LEVELS[4]) {
-                    vitMul = Config.RATE_VITALITY_LEVEL_4;
-                }
-            }
-            final long petExp = Math.max(0L, Math.round(addToExp * vitMul));
-            s.addExpAndSp(petExp, 0);
-            getStat().addExpAndSp(0L, addToSp, useVitality);
-            return;
-        }
-        getStat().addExpAndSp(0L, addToSp, useVitality);
-        return;
-    }
+	public void addExpAndSp(long addToExp, int addToSp, boolean useVitality)
+	{
+		if (_expDisabled && addToExp > 0L) {
+			final L2Summon s = getPet();
+			if (s != null && !s.isDead()) {
+				if (s.getLevel() <= getLevel()) {
+					double vitMul = 1.0;
+					if (useVitality && Config.ENABLE_VITALITY) {
+						final int vp = getStat().getVitalityPoints();
+						if (vp > PlayerStat.VITALITY_LEVELS[0] && vp <= PlayerStat.VITALITY_LEVELS[1]) {
+							vitMul = Config.RATE_VITALITY_LEVEL_1;
+						} else if (vp > PlayerStat.VITALITY_LEVELS[1] && vp <= PlayerStat.VITALITY_LEVELS[2]) {
+							vitMul = Config.RATE_VITALITY_LEVEL_2;
+						} else if (vp > PlayerStat.VITALITY_LEVELS[2] && vp <= PlayerStat.VITALITY_LEVELS[3]) {
+							vitMul = Config.RATE_VITALITY_LEVEL_3;
+						} else if (vp > PlayerStat.VITALITY_LEVELS[3] && vp <= PlayerStat.VITALITY_LEVELS[4]) {
+							vitMul = Config.RATE_VITALITY_LEVEL_4;
+						}
+					}
+					final long petExp = Math.max(0L, Math.round(addToExp * vitMul));
+					s.addExpAndSp(petExp, 0);
+					getStat().addExpAndSp(0L, addToSp, useVitality);
+					return;
+				} else {
+					final long petExp = Math.max(0L, Math.round(addToExp * 0.10));
+					s.addExpAndSp(petExp, 0);
+					getStat().addExpAndSp(0L, addToSp, useVitality);
+					return;
+				}
+			}
+			getStat().addExpAndSp(0L, addToSp, useVitality);
+			return;
+		}
+		getStat().addExpAndSp(addToExp, addToSp, useVitality);
+	}
 
-    getStat().addExpAndSp(addToExp, addToSp, useVitality);
-}
 	
 	public void removeExpAndSp(long removeExp, int removeSp)
 	{

@@ -15,8 +15,9 @@ MOBS = [20677,21109,21112,21116,21114,21004,21002,21006,21008,21010,18001,20672,
 RED_GEM = 8765
 DROP_CHANCE = 60 # Drop chance for Red Gems
 
-# 14 cards; index 0 is for closed card, displayed as '?'
-CARD_VALUES = ["?","A","1","2","3","4","5","6","7","8","9","10","J","Q","K"]
+# 13 cards; index 0 is for closed card, displayed as '?'
+CARD_VALUES = ["?","A","2","3","4","5","6","7","8","9","10","J","Q","K"]
+NUM_RANKS = len(CARD_VALUES) - 1
 
 # Reward items
 ZIGGOS_GEMSTONE = 8868
@@ -120,7 +121,7 @@ class Quest (JQuest) :
                  st.giveItems(item,amt)
      elif event.startswith("Klump_openCard") : # 'Open' card
          num = int(event[14])
-         self.games[name][num-1] = st.getRandom(14) + 1 # generate index of random card, except index 0, which means 'card is closed'
+         self.games[name][num-1] = st.getRandom(NUM_RANKS) + 1 # generate index of random card, except index 0, which means 'card is closed'
          htmltext = self.onEvent("Klump_PlayField.htm",st)
      return htmltext
 
