@@ -42,19 +42,19 @@ class Quest (JQuest) :
      st.set("cond","5")
    else :
      if event == "31518-6.htm" :
-       st.giveItems(ADENA,100000)
+       st.giveItems(ADENA, int(100000 * getattr(Config, 'RATE_QUESTS_REWARD_ADENA', 1.0)))
      elif event == "31518-7.htm" :
-       st.giveItems(ASOFE,int(13))
-       st.giveItems(ADENA,6400)
+       st.giveItems(ASOFE,int(13 * Config.RATE_QUESTS_REWARD_ITEMS))
+       st.giveItems(ADENA, int(6400 * getattr(Config, 'RATE_QUESTS_REWARD_ADENA', 1.0)))
      elif event == "31518-8.htm" :
-       st.giveItems(THONS,int(13))
-       st.giveItems(ADENA,6400)
+       st.giveItems(THONS,int(13 * Config.RATE_QUESTS_REWARD_ITEMS))
+       st.giveItems(ADENA, int(6400 * getattr(Config, 'RATE_QUESTS_REWARD_ADENA', 1.0)))
      elif event == "31518-9.htm" :
-       st.giveItems(ENRIA,int(6))
-       st.giveItems(ADENA,13600)
+       st.giveItems(ENRIA,int(6 * Config.RATE_QUESTS_REWARD_ITEMS))
+       st.giveItems(ADENA, int(6400 * getattr(Config, 'RATE_QUESTS_REWARD_ADENA', 1.0)))
      elif event == "31518-10.htm" :
-       st.giveItems(MOLD_HARDENER,int(3))
-       st.giveItems(ADENA,17200)
+       st.giveItems(MOLD_HARDENER,int(3 * Config.RATE_QUESTS_REWARD_ITEMS))
+       st.giveItems(ADENA, int(6400 * getattr(Config, 'RATE_QUESTS_REWARD_ADENA', 1.0)))
      st.playSound("ItemSound.quest_finish")
      st.exitQuest(1)
    return htmltext

@@ -13,4 +13,29 @@
     <ingredient id="7251" count="10"/>
     <production id="7562" count="1"/>
   </item>
+    <!-- Deterministic bundle from 100 Grey Pouches (1 chit each) -->
+  <item id="3">
+    <ingredient id="7251" count="4"/>
+    <production id="1060" count="10"/>
+  </item>
+  <item id="4">
+    <ingredient id="7251" count="15"/>
+    <production id="1539" count="10"/>
+  </item>
+  <item id="5">
+    <ingredient id="7251" count="5"/>
+    <production id="1061" count="10"/>
+  </item>
+  <item id="6">
+    <ingredient id="7251" count="24"/>
+    <production id="6035" count="10"/>
+  </item>
+  <item id="7">
+    <ingredient id="7251" count="24"/>
+    <production id="735" count="10"/>
+  </item>
+  <item id="8">
+    <ingredient id="7251" count="56"/>
+    <production id="1540" count="10"/>
+  </item>
 </list>

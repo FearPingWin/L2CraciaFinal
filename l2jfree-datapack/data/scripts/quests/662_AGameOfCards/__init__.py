@@ -5,6 +5,7 @@ from com.l2jfree.gameserver.model.quest import State
 from com.l2jfree.gameserver.model.quest import QuestState
 from com.l2jfree.gameserver.model.quest.jython import QuestJython as JQuest
 from com.l2jfree.gameserver.cache import HtmCache
+from com.l2jfree import Config
 
 qn = "662_AGameOfCards"
 
@@ -146,15 +147,23 @@ class Quest (JQuest) :
      return htmltext
 
  def onKill(self,npc,player,isPet):
-     st = player.getQuestState(qn)
-     if not st : return
-     if st.getState() != State.STARTED : return
-     npcId = npc.getNpcId()
-     if npcId in MOBS:
-         if st.getRandom(100) < DROP_CHANCE:
-             st.giveItems(RED_GEM,1)
-             st.playSound("ItemSound.quest_itemget")
-     return
+    st = player.getQuestState(qn)
+    if not st : return
+    if st.getState() != State.STARTED : return
+    npcId = npc.getNpcId()
+    if npcId in MOBS:
+        total = DROP_CHANCE * Config.RATE_QUESTS_REWARD_ITEMS
+        guaranteed = int(total // 100)
+        remainder  = total - (guaranteed * 100)
+
+        count = guaranteed
+        if st.getRandom(100) < int(remainder):
+            count += 1
+
+        if count > 0:
+            st.giveItems(RED_GEM, count)
+            st.playSound("ItemSound.quest_itemget")
+    return
 
 QUEST = Quest(662,qn,"A Game Of Cards")
 

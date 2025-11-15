@@ -23,4 +23,89 @@
     <ingredient id="7251" count="28"/>
     <production id="7637" count="1"/>
   </item>
+  <!-- Deterministic bundle from 100 Grey Pouches (1 chit each) -->
+  <item id="5">
+    <ingredient id="7251" count="4"/>
+    <production id="1060" count="10"/>
+  </item>
+  <item id="6">
+    <ingredient id="7251" count="15"/>
+    <production id="1539" count="10"/>
+  </item>
+  <item id="7">
+    <ingredient id="7251" count="5"/>
+    <production id="1061" count="10"/>
+  </item>
+  <item id="8">
+    <ingredient id="7251" count="24"/>
+    <production id="6035" count="10"/>
+  </item>
+  <item id="9">
+    <ingredient id="7251" count="24"/>
+    <production id="735" count="10"/>
+  </item>
+  <item id="10">
+    <ingredient id="7251" count="56"/>
+    <production id="1540" count="10"/>
+  </item>
+  
+  <!-- Deterministic bundles from 100 Brown  Pouches (cost 2800 chits)  шанс увеличен в 2 раза по сравнению с базовым пакетом--> 
+  <item id="11">
+    <ingredient id="7251" count="47"/>
+    <production id="4039" count="10"/>
+  </item>
+  <item id="12">
+    <ingredient id="7251" count="70"/>
+    <production id="4041" count="5"/>
+  </item>
+  <item id="13">
+    <ingredient id="7251" count="47"/>
+    <production id="4043" count="10"/>
+  </item>
+  <item id="14">
+    <ingredient id="7251" count="47"/>
+    <production id="4044" count="10"/>
+  </item>
+  <item id="15">
+    <ingredient id="7251" count="24"/>
+    <production id="4042" count="10"/>
+  </item>
+  <item id="16">
+    <ingredient id="7251" count="24"/>
+    <production id="4040" count="10"/>
+  </item>
+
+  <!-- Deterministic bundles from 100 Yellow Pouches (cost 600 chits) 1881было базово 63, но отношения сопов к пудре всегдая 1/2 поэтому изменил  -->
+  <item id="17">
+    <ingredient id="7251" count="25"/>
+    <production id="1875" count="10"/>
+  </item>
+  <item id="18">
+    <ingredient id="7251" count="13"/>
+    <production id="1882" count="10"/>
+  </item>
+  <item id="19">
+    <ingredient id="7251" count="19"/>
+    <production id="1880" count="10"/>
+  </item>
+  <item id="20">
+    <ingredient id="7251" count="25"/>
+    <production id="1874" count="10"/>
+  </item>
+  <item id="21">
+    <ingredient id="7251" count="25"/>
+    <production id="1877" count="10"/>
+  </item>
+  <item id="22">
+    <ingredient id="7251" count="25"/>
+    <production id="1881" count="20"/>
+  </item>
+  <item id="23">
+    <ingredient id="7251" count="21"/>
+    <production id="1879" count="10"/>
+  </item>
+  <item id="24">
+    <ingredient id="7251" count="8"/>
+    <production id="1876" count="10"/>
+  </item>
 </list>
