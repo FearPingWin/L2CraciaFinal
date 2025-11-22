@@ -34,10 +34,10 @@ REWARD={
 "Tallum":   [5526,5509,5497],
 "Nightmare":[5527,5514,5502],
 "Majestic": [5528,5515,5503],
-"Wald_DarkCryst":[5368,5392,5426,5525,5508,5496], # Walderal includes recipes
-"Wald_Tallum":   [5370,5394,5428,5526,5509,5497], # Walderal includes recipes
-"Wald_Nightmare":[5380,5404,5430,5527,5514,5502], # Walderal includes recipes
-"Wald_Majestic": [5382,5406,5432,5528,5515,5503], # Walderal includes recipes
+"Wald_DarkCryst":[5368,5392,5426], # Walderal includes recipes
+"Wald_Tallum":   [5370,5394,5428], # Walderal includes recipes
+"Wald_Nightmare":[5380,5404,5430], # Walderal includes recipes
+"Wald_Majestic": [5382,5406,5432], # Walderal includes recipes
 }
 #Recipes for 100% option
 RECIPES=[5368,5392,5426,5370,5394,5428,5380,5404,5430,5382,5406,5432]
@@ -89,8 +89,6 @@ def give_reward(st,reward) :
     if luck < REWARD_RATE[0] :            # best reward: all items from collection
        for j in prize :
            st.giveItems(j,1)
-    elif luck < REWARD_RATE[1] :          # worst reward: 4000a
-       st.rewardItems(57,4000)
     elif luck < REWARD_RATE[2] :          # quite nice : 2 recipes
        for k in range(2) :
           l = st.getRandom(len(prize))
