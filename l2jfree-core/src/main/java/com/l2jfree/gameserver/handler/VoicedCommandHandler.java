@@ -31,6 +31,8 @@ import com.l2jfree.gameserver.handler.voicedcommands.Wedding;
 import com.l2jfree.gameserver.model.restriction.global.GlobalRestrictions;
 import com.l2jfree.util.HandlerRegistry;
 import com.l2jfree.gameserver.handler.voicedcommands.GetBuff;
+import com.l2jfree.gameserver.handler.voicedcommands.Delevel;
+
 
 public final class VoicedCommandHandler extends HandlerRegistry<String, IVoicedCommandHandler>
 {
@@ -58,6 +60,7 @@ public final class VoicedCommandHandler extends HandlerRegistry<String, IVoicedC
 		registerVoicedCommandHandler(new GetBuff());
 		registerVoicedCommandHandler(new ExpToggle());
 		registerVoicedCommandHandler(new HerbToggle());
+		registerVoicedCommandHandler(new Delevel());
 		
 		_log.info("VoicedCommandHandler: Loaded " + size() + " handlers.");
 	}
