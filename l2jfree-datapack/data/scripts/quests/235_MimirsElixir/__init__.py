@@ -87,7 +87,11 @@ class Quest (JQuest) :
             htmltext = "30166-06.htm"    # find Blood Fire from "bloody guardians"
         # still looking for blood fire?
         elif cond==6 :
-            htmltext = "30166-07.htm"    # find Blood Fire from "bloody guardians"
+            if st.getQuestItemsCount(BLOOD_FIRE) :
+                st.set("cond","7")
+                htmltext = "30166-08.htm"     # what are you standing there for?  Go to the cauldron and mix them...
+            else :
+                htmltext = "30166-07.htm"    # find Blood Fire from "bloody guardians"
         # Ah, you got the blood fire!  Time to mix them up!
         elif cond==7 and st.getQuestItemsCount(PURE_SILVER) and st.getQuestItemsCount(TRUE_GOLD):
             htmltext = "30166-08.htm"     # what are you standing there for?  Go to the cauldron and mix them...

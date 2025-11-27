@@ -8,6 +8,7 @@
   <item><ingredient id="57" count="5000000"/><production id="4667" count="1"/></item>   
   <item><ingredient id="57" count="5000000"/><production id="4668" count="1"/></item>     
   <item><ingredient id="57" count="5000000"/><production id="4669" count="1"/></item> 
+  <item><ingredient id="57" count="500000"/><production id="6318" count="1"/></item> <!-- Blood Fire -->
   <item><ingredient id="57" count="10000000"/><production id="7593" count="1"/></item> 
   <item><ingredient id="57" count="1000000"/><production id="8767" count="1"/></item> 
   <item><ingredient id="57" count="1000000"/><production id="1419" count="1"/></item>   <!-- Proof of Blood / Blood Mark, clan lvl 3 -->
